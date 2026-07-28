@@ -1,0 +1,100 @@
+:root {
+  --bg: #0e1016;
+  --bg-raised: #161a23;
+  --bg-input: #1d2230;
+  --border: #262c3a;
+  --border-strong: #343c4e;
+
+  --text: #e6e9f0;
+  --text-dim: #939bad;
+  --text-faint: #626a7d;
+
+  --accent: #5b8cff;
+  --accent-dim: #2f4a8f;
+  --good: #3fbf7f;
+  --warn: #e0a33e;
+  --bad: #e05e5e;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+
+  font-family: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+#app { height: 100vh; display: flex; flex-direction: column; }
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  transition: background 120ms, border-color 120ms;
+}
+button:hover:not(:disabled) { background: #262d3d; border-color: var(--accent-dim); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) { background: #6f9bff; border-color: #6f9bff; }
+
+button.danger { border-color: #6b3030; color: #ffb3b3; }
+button.danger:hover:not(:disabled) { background: #3a1c1c; border-color: var(--bad); }
+
+input[type="text"], input[type="number"], select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+input[type="range"] { accent-color: var(--accent); width: 100%; }
+
+code, .mono {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+}
+
+.dim { color: var(--text-dim); }
+.faint { color: var(--text-faint); }
+
+.warn-box {
+  background: #2a2113;
+  border: 1px solid #574119;
+  color: #f0cd8c;
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.scroll { overflow-y: auto; }
+.scroll::-webkit-scrollbar { width: 10px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+  border: 3px solid var(--bg);
+}

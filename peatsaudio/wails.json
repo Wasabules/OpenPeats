@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "peatsaudio",
+  "outputfilename": "peatsaudio",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Wasabules",
+    "email": "39313803+Wasabules@users.noreply.github.com"
+  }
+}

@@ -1,0 +1,27 @@
+# ---------------------------------------------------------------------------
+# Matériel de rétro-ingénierie — NE JAMAIS PUBLIER
+#
+# L'APK de l'application officielle et tout ce qui en dérive (code décompilé,
+# smali, ressources) restent strictement locaux. Le dépôt ne contient que du
+# code écrit indépendamment à partir de la spécification observée.
+# ---------------------------------------------------------------------------
+*.apk
+jadx-out/
+smali-out/
+dexdir/
+*.dex
+*.jar
+*.btsnoop
+hci.btsnoop
+
+# Artefacts de compilation
+build/bin/
+probe/peats-probe
+peatsaudio/frontend/dist/
+peatsaudio/frontend/node_modules/
+peatsaudio/frontend/wailsjs/
+node_modules/
+
+# Divers
+*.log
+.DS_Store
