@@ -25,13 +25,23 @@ hci.btsnoop
 # Build artefacts
 build/bin/
 probe/peats-probe
-peatsaudio/frontend/dist/
+
+# The built frontend is ignored, but the directory itself must exist on a
+# fresh clone: main.go does //go:embed all:frontend/dist, and Wails loads that
+# package to generate its bindings *before* the frontend is compiled. With no
+# directory the embed pattern matches nothing and the build fails before it
+# starts. The `all:` prefix is what makes a lone dotfile enough to satisfy it.
+peatsaudio/frontend/dist/*
+!peatsaudio/frontend/dist/.gitkeep
+
 peatsaudio/frontend/node_modules/
 peatsaudio/frontend/wailsjs/
 node_modules/
 
-# Release staging, produced by .github/workflows/release.yml
-dist/
+# Release staging, produced by .github/workflows/release.yml.
+# Anchored: an unanchored "dist/" would also swallow peatsaudio/frontend/dist,
+# whose tracked .gitkeep the Wails build depends on.
+/dist/
 
 # Misc
 *.log

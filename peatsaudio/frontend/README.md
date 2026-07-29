@@ -16,6 +16,11 @@ them without a full build:
 cd .. && wails generate module
 ```
 
+`dist/` is ignored except for a tracked `.gitkeep`: `main.go` embeds this
+directory, and Wails loads that package to generate the bindings *before*
+compiling the frontend, so it has to exist on a fresh clone. A vite plugin
+restores the file after each build, since vite empties `outDir`.
+
 ## Layout
 
 ```

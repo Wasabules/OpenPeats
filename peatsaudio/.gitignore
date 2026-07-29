@@ -1,3 +1,12 @@
 build/bin
 node_modules
-frontend/dist
+
+# The built frontend is ignored, but the directory has to survive: main.go
+# does //go:embed all:frontend/dist, and Wails loads that package to generate
+# its bindings *before* compiling the frontend, so a fresh clone with no
+# directory fails before the build starts.
+#
+# Excluding "frontend/dist" outright would stop git descending into it, and
+# the negation below could never match — hence the trailing /*.
+frontend/dist/*
+!frontend/dist/.gitkeep

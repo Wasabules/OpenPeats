@@ -49,12 +49,19 @@ go test ./internal/peats -run TestEncodeEQBand -v  # a single test
 PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v   # needs the earbuds
 ```
 
-`go vet ./...` and `go build ./...` **fail on a clean tree**: `main.go` does
-`//go:embed all:frontend/dist`, and `frontend/dist/` is git-ignored. Stick to
-`go vet ./internal/... ./cmd/...`, or build the frontend first
-(`cd frontend && npm install && npm run build`).
+`frontend/dist/.gitkeep` is tracked on purpose: `main.go` does
+`//go:embed all:frontend/dist`, and Wails loads that package to generate its
+bindings *before* it compiles the frontend. With no directory the embed
+pattern matches nothing and `wails build` fails before it starts, on a fresh
+clone. The `all:` prefix is what makes a lone dotfile enough. A vite plugin
+puts the file back after each build, since vite empties `outDir`.
 
-The frontend also needs the Wails bindings (`frontend/wailsjs/`, git-ignored):
+On Linux `go vet ./...` still needs the GTK/WebKit headers, because the root
+package reaches the Wails runtime through cgo. `go vet ./internal/... ./cmd/...`
+covers the protocol and the CLI with no system dependency, which is what CI
+runs.
+
+The frontend needs the Wails bindings (`frontend/wailsjs/`, git-ignored):
 `wails generate module` produces them without a full build.
 
 ### peatsctl — validating a transport with no GUI

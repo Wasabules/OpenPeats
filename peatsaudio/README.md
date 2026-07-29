@@ -30,10 +30,13 @@ The unit tests decode frames **actually captured** on the H3: battery reply,
 ANC sub-mode, touch mapping, encoding of one EQ band. The i18n tests check the
 translation catalogues against the English source.
 
-`go vet ./...` and `go build ./...` **fail on a clean tree**: `main.go` does
-`//go:embed all:frontend/dist`, and `frontend/dist/` is git-ignored. Either
-stick to `go vet ./internal/... ./cmd/...`, or build the frontend first
-(`cd frontend && npm install && npm run build`).
+On Linux, `go vet ./...` needs the GTK/WebKit headers because the root package
+reaches the Wails runtime through cgo. `go vet ./internal/... ./cmd/...` covers
+the protocol and the CLI with no system dependency, and is what CI runs.
+
+`frontend/dist/.gitkeep` is tracked so the `//go:embed all:frontend/dist`
+directive resolves on a fresh clone: Wails generates its bindings by loading
+that package *before* compiling the frontend.
 
 ## peatsctl — validating a transport without a GUI
 
