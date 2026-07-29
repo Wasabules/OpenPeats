@@ -46,6 +46,31 @@ wails build -tags webkit2_41   # Ubuntu 24.04 : webkit2gtk-4.1
 
 Les écouteurs doivent être appairés et hors de l'étui.
 
+## Plateformes
+
+Le protocole circule sur RFCOMM (Bluetooth Classic, profil SPP). Seule la
+couche transport change d'un système à l'autre ; la logique est commune.
+
+| Système | Transport | État |
+|---|---|---|
+| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ validé sur matériel |
+| Windows | Winsock `AF_BTH` | ⚠️ écrit, **jamais testé** |
+| macOS | IOBluetooth | ❌ à faire — voir ci-dessous |
+| Android | `BluetoothSocket` (Kotlin) | ❌ à faire |
+| iOS | — | 🚫 impossible |
+
+**macOS** est réalisable mais demande un pont cgo vers IOBluetooth, un
+framework Objective-C à API asynchrone par délégués : il n'y a pas d'API socket
+comme sur Linux et Windows, donc le code ne peut pas être écrit en miroir des
+deux autres transports.
+
+**Android** tourne sur un noyau Linux qui gère `AF_BLUETOOTH`, mais SELinux et
+le modèle de permissions bloquent les sockets Bluetooth bruts depuis le NDK. Le
+chemin pris en charge est `android.bluetooth.BluetoothSocket`, côté Kotlin.
+
+**iOS** est hors d'atteinte quel que soit le framework : le profil SPP y est
+réservé aux accessoires certifiés MFi, ce que ces écouteurs ne sont pas.
+
 ## Statut de la rétro-ingénierie
 
 Le protocole a été reconstitué par analyse de l'application Android officielle,

@@ -108,14 +108,25 @@ func TestEncodeEQBandV1PacksHeader(t *testing.T) {
 	}
 }
 
-func TestParseMACIsLittleEndian(t *testing.T) {
+// ParseMAC conserve l'ordre naturel de la MAC. L'inversion attendue par
+// sockaddr_rc est faite dans le transport Linux, parce que Windows attend au
+// contraire un entier 64 bits dans l'ordre de lecture.
+func TestParseMACKeepsNaturalOrder(t *testing.T) {
 	got, err := ParseMAC("98:80:BB:40:D4:ED")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := [6]byte{0xED, 0xD4, 0x40, 0xBB, 0x80, 0x98}
+	want := [6]byte{0x98, 0x80, 0xBB, 0x40, 0xD4, 0xED}
 	if got != want {
 		t.Errorf("ParseMAC = %X, attendu %X", got, want)
+	}
+}
+
+func TestParseMACRejectsGarbage(t *testing.T) {
+	for _, s := range []string{"", "98:80:BB:40:D4", "zz:80:BB:40:D4:ED"} {
+		if _, err := ParseMAC(s); err == nil {
+			t.Errorf("ParseMAC(%q) aurait dû échouer", s)
+		}
 	}
 }
 

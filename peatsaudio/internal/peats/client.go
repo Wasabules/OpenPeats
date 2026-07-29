@@ -4,17 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
 	"sync"
-	"syscall"
 	"time"
-	"unsafe"
 )
 
-const btprotoRFCOMM = 3
-
-// Réglages issus des mesures sur le H3.
+// Réglages issus des mesures sur un SOUNDPEATS H3.
 const (
 	// Une commande émise trop tôt après l'établissement du lien RFCOMM reste
 	// sans réponse. ~600 ms suffisent.
@@ -22,136 +16,24 @@ const (
 
 	defaultTimeout = 1500 * time.Millisecond
 	readRetries    = 3
-	maxChannel     = 30
+	readTimeout    = 300 * time.Millisecond
 )
-
-var (
-	// ErrBusy signale qu'un autre appareil monopolise le canal de contrôle.
-	// Typiquement : multipoint actif et téléphone connecté avec l'app ouverte.
-	ErrBusy = errors.New("canal de contrôle occupé par un autre appareil")
-
-	// ErrNoChannel : aucun canal RFCOMM ouvert (écouteurs éteints ou en étui).
-	ErrNoChannel = errors.New("aucun canal RFCOMM disponible")
-
-	ErrTimeout      = errors.New("pas de réponse des écouteurs")
-	ErrNotConnected = errors.New("non connecté")
-)
-
-type sockaddrRC struct {
-	Family  uint16
-	Bdaddr  [6]byte
-	Channel uint8
-	_       [1]byte
-}
-
-// ParseMAC convertit "98:80:BB:40:D4:ED" en bdaddr (ordre inverse).
-func ParseMAC(s string) ([6]byte, error) {
-	var out [6]byte
-	parts := strings.Split(strings.TrimSpace(s), ":")
-	if len(parts) != 6 {
-		return out, fmt.Errorf("adresse MAC invalide: %q", s)
-	}
-	for i, p := range parts {
-		v, err := strconv.ParseUint(p, 16, 8)
-		if err != nil {
-			return out, fmt.Errorf("octet MAC invalide %q: %w", p, err)
-		}
-		out[5-i] = byte(v)
-	}
-	return out, nil
-}
-
-func fdSet(s *syscall.FdSet, fd int) {
-	const bits = 64
-	s.Bits[fd/bits] |= 1 << (uint(fd) % uint(bits))
-}
-
-func dial(addr [6]byte, channel uint8, timeout time.Duration) (int, error) {
-	fd, err := syscall.Socket(syscall.AF_BLUETOOTH, syscall.SOCK_STREAM, btprotoRFCOMM)
-	if err != nil {
-		return -1, fmt.Errorf("socket: %w", err)
-	}
-	if err := syscall.SetNonblock(fd, true); err != nil {
-		syscall.Close(fd)
-		return -1, err
-	}
-
-	sa := sockaddrRC{Family: syscall.AF_BLUETOOTH, Bdaddr: addr, Channel: channel}
-	_, _, errno := syscall.Syscall(syscall.SYS_CONNECT, uintptr(fd),
-		uintptr(unsafe.Pointer(&sa)), unsafe.Sizeof(sa))
-	if errno != 0 && errno != syscall.EINPROGRESS {
-		syscall.Close(fd)
-		return -1, errno
-	}
-
-	if errno == syscall.EINPROGRESS {
-		var w syscall.FdSet
-		fdSet(&w, fd)
-		tv := syscall.NsecToTimeval(int64(timeout))
-		n, err := syscall.Select(fd+1, nil, &w, nil, &tv)
-		if err != nil {
-			syscall.Close(fd)
-			return -1, err
-		}
-		if n == 0 {
-			syscall.Close(fd)
-			return -1, ErrTimeout
-		}
-		soErr, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
-		if err != nil {
-			syscall.Close(fd)
-			return -1, err
-		}
-		if soErr != 0 {
-			syscall.Close(fd)
-			return -1, syscall.Errno(soErr)
-		}
-	}
-
-	if err := syscall.SetNonblock(fd, false); err != nil {
-		syscall.Close(fd)
-		return -1, err
-	}
-	return fd, nil
-}
-
-// dialAny balaie les canaux RFCOMM et renvoie la PREMIÈRE connexion établie,
-// socket ouvert. sdptool ne renvoie rien d'utilisable sur ces écouteurs, d'où
-// le balayage.
-//
-// Le socket est délibérément conservé plutôt que refermé puis rouvert : les
-// écouteurs refusent une reconnexion immédiate sur le même canal (EBUSY) tant
-// que la session RFCOMM précédente n'est pas démontée.
-func dialAny(addr [6]byte) (int, uint8, error) {
-	sawBusy := false
-	for ch := uint8(1); ch <= maxChannel; ch++ {
-		fd, err := dial(addr, ch, 3*time.Second)
-		if err == nil {
-			return fd, ch, nil
-		}
-		if errors.Is(err, syscall.EBUSY) {
-			sawBusy = true
-		}
-	}
-	if sawBusy {
-		return -1, 0, ErrBusy
-	}
-	return -1, 0, ErrNoChannel
-}
 
 // Client est une connexion de contrôle vers une paire d'écouteurs.
+//
+// Le transport est fourni par la couche plateforme (transport_*.go) ; tout ce
+// qui suit est indépendant du système.
 type Client struct {
 	mu      sync.Mutex
-	fd      int
+	conn    rfcommConn
 	channel uint8
-	addr    [6]byte
+	closed  bool
 
-	// exchange sérialise les échanges : un seul en vol à la fois.
+	// exMu sérialise les échanges : un seul en vol à la fois.
 	exMu sync.Mutex
 
 	frames  chan Frame
 	stopped chan struct{}
-	closed  bool
 
 	// OnFrame reçoit toutes les trames, y compris les notifications
 	// spontanées émises par les écouteurs.
@@ -164,30 +46,27 @@ func Connect(mac string, channel uint8) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	if dialRFCOMM == nil {
+		return nil, ErrUnsupported
+	}
 
-	var fd int
+	var conn rfcommConn
 	if channel == 0 {
-		fd, channel, err = dialAny(addr)
+		conn, channel, err = dialAny(addr)
 	} else {
-		fd, err = dial(addr, channel, 10*time.Second)
+		conn, err = dialRFCOMM(addr, channel, 10*time.Second)
 	}
 	if err != nil {
-		if errors.Is(err, syscall.EBUSY) {
-			return nil, ErrBusy
-		}
 		return nil, err
 	}
 
-	// Timeout de lecture court : la boucle de lecture reboucle dessus.
-	tv := syscall.NsecToTimeval(int64(300 * time.Millisecond))
-	if err := syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv); err != nil {
-		log.Printf("peats: SO_RCVTIMEO non appliqué: %v", err)
+	if err := conn.SetReadTimeout(readTimeout); err != nil {
+		log.Printf("peats: délai de lecture non appliqué: %v", err)
 	}
 
 	c := &Client{
-		fd:      fd,
+		conn:    conn,
 		channel: channel,
-		addr:    addr,
 		frames:  make(chan Frame, 32),
 		stopped: make(chan struct{}),
 	}
@@ -199,6 +78,15 @@ func Connect(mac string, channel uint8) (*Client, error) {
 }
 
 func (c *Client) Channel() uint8 { return c.channel }
+
+func (c *Client) transport() (rfcommConn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.conn == nil {
+		return nil, ErrNotConnected
+	}
+	return c.conn, nil
+}
 
 func (c *Client) readLoop() {
 	defer close(c.frames)
@@ -212,20 +100,14 @@ func (c *Client) readLoop() {
 		default:
 		}
 
-		c.mu.Lock()
-		fd := c.fd
-		closed := c.closed
-		c.mu.Unlock()
-		if closed || fd < 0 {
+		conn, err := c.transport()
+		if err != nil {
 			return
 		}
 
-		n, err := syscall.Read(fd, buf)
+		n, err := conn.Read(buf)
 		if err != nil {
-			// EAGAIN : timeout de lecture, normal. EINTR : préemption du
-			// runtime Go sur un syscall bloquant.
-			if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK) ||
-				errors.Is(err, syscall.EINTR) {
+			if isTimeout(err) {
 				continue
 			}
 			return
@@ -249,7 +131,7 @@ func (c *Client) readLoop() {
 			}
 			select {
 			case c.frames <- f:
-			default: // consommateur en retard : on ne bloque pas la lecture
+			default: // consommateur en retard : ne pas bloquer la lecture
 			}
 		}
 	}
@@ -268,13 +150,11 @@ func (c *Client) drain() {
 }
 
 func (c *Client) write(b []byte) error {
-	c.mu.Lock()
-	fd, closed := c.fd, c.closed
-	c.mu.Unlock()
-	if closed || fd < 0 {
-		return ErrNotConnected
+	conn, err := c.transport()
+	if err != nil {
+		return err
 	}
-	_, err := syscall.Write(fd, b)
+	_, err = conn.Write(b)
 	return err
 }
 
@@ -325,9 +205,9 @@ func (c *Client) Get(cmd Command) (Frame, error) {
 // (mode ANC, multipoint) ; renvoyer la commande rejouerait l'effet de bord —
 // observé sur le H3 avec trois invites vocales pour une seule écriture voulue.
 //
-// L'acquittement, quand il arrive, porte l'opcode de réponse du `get`
-// correspondant, pas celui du `set`. On l'attend brièvement à titre indicatif,
-// mais son absence n'est PAS une erreur : l'appelant doit relire l'état.
+// L'acquittement, quand il arrive, porte généralement l'opcode de réponse du
+// `get` correspondant plutôt que celui du `set`. Son absence n'est PAS une
+// erreur : l'appelant doit relire l'état pour vérifier.
 func (c *Client) Set(setCmd, getCmd Command, payload []byte) (Frame, bool) {
 	c.exMu.Lock()
 	defer c.exMu.Unlock()
@@ -391,12 +271,12 @@ func (c *Client) Close() {
 		return
 	}
 	c.closed = true
-	fd := c.fd
-	c.fd = -1
+	conn := c.conn
+	c.conn = nil
 	c.mu.Unlock()
 
 	close(c.stopped)
-	if fd >= 0 {
-		syscall.Close(fd)
+	if conn != nil {
+		conn.Close()
 	}
 }
