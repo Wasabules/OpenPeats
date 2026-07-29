@@ -65,11 +65,14 @@ couche transport change d'un système à l'autre ; la logique est commune.
 
 | Système | Transport | État |
 |---|---|---|
-| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ validé sur matériel |
-| Android | `BluetoothSocket` (Kotlin) | ✅ validé sur matériel |
-| Windows | Winsock `AF_BTH` | ⚠️ écrit, **jamais testé** |
+| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ lecture et écriture validées |
+| Android | `BluetoothSocket` (Kotlin) | ✅ lecture et écriture validées |
+| Windows | Winsock `AF_BTH` | ⚠️ écrit, **jamais exécuté** |
 | macOS | IOBluetooth | ❌ à faire — voir ci-dessous |
 | iOS | — | 🚫 impossible |
+
+Sur Android, la validation couvre la lecture complète de l'état, le changement
+de mode ANC et l'application d'une courbe d'égaliseur, vérifiés sur un H3.
 
 **macOS** est réalisable mais demande un pont cgo vers IOBluetooth, un
 framework Objective-C à API asynchrone par délégués : il n'y a pas d'API socket
