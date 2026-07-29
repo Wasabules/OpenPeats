@@ -14,7 +14,19 @@ sous Ubuntu 24.04.
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | Spécification du protocole, avec le statut de vérification de chaque point |
 | [`peatsaudio/`](peatsaudio/) | Application de bureau (Wails + Go + Svelte) |
+| [`android/`](android/) | Application Android (Kotlin + Jetpack Compose) |
 | [`probe/`](probe/) | Sonde en ligne de commande pour explorer le protocole |
+
+Le protocole est implémenté deux fois — en Go et en Kotlin — à partir de la même
+spécification. C'est délibéré : les ~350 lignes de logique sont peu coûteuses à
+porter, et chaque plateforme garde ainsi son transport natif sans couche de
+liaison. `PROTOCOL.md` reste la référence unique.
+
+```bash
+cd android
+ANDROID_HOME=$HOME/Android/Sdk ./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
 Le cœur réutilisable est [`peatsaudio/internal/peats`](peatsaudio/internal/peats) :
 protocole pur (trames, opcodes, encodage de l'égaliseur) et transport
@@ -54,9 +66,9 @@ couche transport change d'un système à l'autre ; la logique est commune.
 | Système | Transport | État |
 |---|---|---|
 | Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ validé sur matériel |
+| Android | `BluetoothSocket` (Kotlin) | ✅ validé sur matériel |
 | Windows | Winsock `AF_BTH` | ⚠️ écrit, **jamais testé** |
 | macOS | IOBluetooth | ❌ à faire — voir ci-dessous |
-| Android | `BluetoothSocket` (Kotlin) | ❌ à faire |
 | iOS | — | 🚫 impossible |
 
 **macOS** est réalisable mais demande un pont cgo vers IOBluetooth, un

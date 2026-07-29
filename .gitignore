@@ -14,6 +14,10 @@ dexdir/
 *.btsnoop
 hci.btsnoop
 
+# Exception : le wrapper Gradle est un binaire légitime du projet, sans lequel
+# ./gradlew ne fonctionne pas sur un clone frais.
+!android/gradle/wrapper/gradle-wrapper.jar
+
 # Artefacts de compilation
 build/bin/
 probe/peats-probe
@@ -25,3 +29,11 @@ node_modules/
 # Divers
 *.log
 .DS_Store
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
