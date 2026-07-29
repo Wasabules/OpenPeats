@@ -1,112 +1,119 @@
-# Protocole PeatsAudio — rétro-ingénierie
+# PeatsAudio protocol — reverse engineering
 
-Cible : SOUNDPEATS H3 (`98:80:BB:40:D4:ED`)
-Source : `com.xingkeqi.peats` v1.9.39 (versionCode 9921088), extrait par ADB root
-depuis un Redmi Note 10 (LineageOS, `sweet`).
+Target: SOUNDPEATS H3 (`98:80:BB:40:D4:ED`)
+Source: `com.xingkeqi.peats` v1.9.39 (versionCode 9921088), pulled over ADB root
+from a Redmi Note 10 (LineageOS, `sweet`).
 
-> **Statut : analyse statique.** Tout ce qui suit est tracé jusqu'à un fichier
-> décompilé (jadx) ou désassemblé (baksmali). Rien n'a encore été émis sur le fil.
-> Les points marqués ⚠ sont des inférences, pas des certitudes.
+> **Status: static analysis.** Everything below is traced to a decompiled
+> (jadx) or disassembled (baksmali) file. Nothing had been sent on the wire at
+> the time of writing. Points marked ⚠ are inferences, not certainties.
+> Section 7 records what was later confirmed against hardware.
 
-Artefacts locaux : `peats-base.apk`, `peats-arm64.apk`, `jadx-out/`, `smali-out/`.
+Local artefacts: `peats-base.apk`, `peats-arm64.apk`, `jadx-out/`, `smali-out/`.
+None of them are, or ever will be, in this repository — see the licensing
+section of the README.
 
 ---
 
 ## 1. Architecture
 
-L'app embarque **4 SDK de puces** (Qualcomm GAIA, BES, JieLi, Bluetrum) et route selon
-le modèle de produit. Trois implémentations de `IDeviceInfo` coexistent :
+The app embeds **4 chip SDKs** (Qualcomm GAIA, BES, JieLi, Bluetrum) and routes
+by product model. Three `IDeviceInfo` implementations coexist:
 
-| Implémentation | Transport | Rôle |
+| Implementation | Transport | Role |
 |---|---|---|
-| `DefaultBleDeviceInfoModel` | BLE GATT | chemin générique |
-| `DefaultSppDeviceModel` | RFCOMM / SPP | chemin générique |
-| `QcyBleDeviceModel` | BLE | produits QCY |
+| `DefaultBleDeviceInfoModel` | BLE GATT | generic path |
+| `DefaultSppDeviceModel` | RFCOMM / SPP | generic path |
+| `QcyBleDeviceModel` | BLE | QCY products |
 
-**Résultat central de l'analyse : BLE et SPP produisent des trames strictement
-identiques.** Les deux appellent `BtDataUtilKt.generatePeatsPacket$default` avec le
-même masque de défauts `0x34`. Seul le transport diffère.
+**Central finding of the analysis: BLE and SPP produce strictly identical
+frames.** Both call `BtDataUtilKt.generatePeatsPacket$default` with the same
+`0x34` default mask. Only the transport differs.
 
-Vérifié en smali :
+Verified in smali:
 - `smali-out/…/ble/DefaultBleDeviceInfoModel$sendDataEvent$2.smali`
 - `smali-out/…/spp/DefaultSppDeviceModel$sendDataEvent$2.smali`
 
-→ **Sous Linux, viser RFCOMM/SPP.** C'est le même protocole, sans les contraintes
-d'appairage LE, et exploitable avec un simple socket `AF_BLUETOOTH`/`BTPROTO_RFCOMM`.
+→ **On Linux, target RFCOMM/SPP.** It is the same protocol, without the LE
+pairing constraints, and reachable with a plain
+`AF_BLUETOOTH`/`BTPROTO_RFCOMM` socket.
 
 ### Transports
 
-**SPP** — `SPP_DATA_UUID = 00001101-0000-1000-8000-00805F9B34FB` (RFCOMM standard).
-Le H3 annonce bien ce service, plus des UUID vendeur `eb04`→`eb07` en BR/EDR.
+**SPP** — `SPP_DATA_UUID = 00001101-0000-1000-8000-00805F9B34FB` (standard
+RFCOMM). The H3 does advertise that service, plus vendor UUIDs `eb04`→`eb07`
+on BR/EDR.
 
-**BLE GATT** — base vendeur `D102-11E1-9B23-00025B00A5A5` :
+**BLE GATT** — vendor base `D102-11E1-9B23-00025B00A5A5`:
 
-| Rôle | UUID |
+| Role | UUID |
 |---|---|
 | Service | `00001100-D102-11E1-9B23-00025B00A5A5` |
 | Write | `00001101-D102-11E1-9B23-00025B00A5A5` |
 | Notify | `00001102-D102-11E1-9B23-00025B00A5A5` |
 
-Adresse BLE == adresse A2DP : **vérifié sur le H3**. Un `scan le` capte des annonces
-sur `98:80:BB:40:D4:ED` (RSSI ~-53 dBm, ManufacturerData clé `0x000E`) pendant que
-l'A2DP est actif sur la même adresse.
+BLE address == A2DP address: **verified on the H3**. A `scan le` picks up
+advertisements on `98:80:BB:40:D4:ED` (RSSI ~-53 dBm, ManufacturerData key
+`0x000E`) while A2DP is active on the same address.
 
-⚠ `getLdac`/`setLdac`/`getLeAudio`/`setLeAudio` sont des **stubs vides** dans le modèle
-BLE (retournent `Unit`). Seul le modèle **SPP** les implémente réellement — argument de
-plus pour cibler SPP.
+⚠ `getLdac`/`setLdac`/`getLeAudio`/`setLeAudio` are **empty stubs** in the BLE
+model (they return `Unit`). Only the **SPP** model really implements them —
+one more argument for targeting SPP.
 
 ---
 
-## 2. Format de trame
+## 2. Frame format
 
 `BtDataUtilKt.generatePeatsPacket()` — `jadx-out/sources/…/util/BtDataUtilKt.java:62`
 
 ```
 ┌──────┬─────────┬───────┬────────┬──────────┬─────────┬─────────┐
 │ SOF  │ VERSION │ FLAGS │ LENGTH │ VENDORID │ COMMAND │ PAYLOAD │
-│ 0xFF │  0x04   │ 0x00  │  len   │  2 oct.  │  2 oct. │  N oct. │
+│ 0xFF │  0x04   │ 0x00  │  len   │ 2 bytes  │ 2 bytes │ N bytes │
 └──────┴─────────┴───────┴────────┴──────────┴─────────┴─────────┘
    1        1        1       1         2          2         N
 ```
 
-- `LENGTH` = longueur du **payload seul**.
-- **Aucun checksum, aucun CRC.**
-- `VENDORID` = `00 0A` par défaut — **sauf pour l'EQ qui utilise `00 1D`** (voir §5).
+- `LENGTH` = length of the **payload alone**.
+- **No checksum, no CRC.**
+- `VENDORID` = `00 0A` by default — **except for the EQ, which uses `00 1D`**
+  (see section 5).
 
-Parsing des réponses (`buildPacket()`, ligne 94) : découpage identique, offsets
+Reply parsing (`buildPacket()`, line 94): identical split, offsets
 `0 / 1 / 2 / 3 / 4-6 / 6-8 / 8+`.
 
 ### Conventions
 
-- réponse = `commande[0] | 0x80` → un `get` de `03 XX` répond `83 XX`
-- `set` = `get + 1` sur le 2e octet (⚠ exceptions : `LE_AUDIO`, `WATER_DRAIN_FUNCTION`,
-  `FIND_HEADPHONES_*`, `LEFT/RIGHT_EAR_MEDIA_VOLUME_CHANGE`, `PROMPT_VOLUME_LEVEL`)
+- reply = `command[0] | 0x80` → a `get` of `03 XX` answers `83 XX`
+- `set` = `get + 1` on the second byte (⚠ exceptions: `LE_AUDIO`,
+  `WATER_DRAIN_FUNCTION`, `FIND_HEADPHONES_*`,
+  `LEFT/RIGHT_EAR_MEDIA_VOLUME_CHANGE`, `PROMPT_VOLUME_LEVEL`)
 
-### Exemples
+### Examples
 
 ```
-Lire mode ANC        : FF 04 00 00 00 0A 03 10
-Réponse              : FF 04 00 01 00 0A 83 10 <mode>
-Écrire mode ANC=ANC  : FF 04 00 01 00 0A 03 11 01
-Batterie gauche      : FF 04 00 00 00 0A 03 06
-Réponse              : FF 04 00 01 00 0A 83 06 <0-100>
-Activer LDAC         : FF 04 00 01 00 0A 03 39 01
+Read ANC mode        : FF 04 00 00 00 0A 03 10
+Reply                : FF 04 00 01 00 0A 83 10 <mode>
+Write ANC mode=ANC   : FF 04 00 01 00 0A 03 11 01
+Left battery         : FF 04 00 00 00 0A 03 06
+Reply                : FF 04 00 01 00 0A 83 06 <0-100>
+Enable LDAC          : FF 04 00 01 00 0A 03 39 01
 ```
 
 ---
 
-## 3. Table des commandes
+## 3. Command table
 
-Source : `jadx-out/sources/…/data/enums/FunctionEnum.java`
+Source: `jadx-out/sources/…/data/enums/FunctionEnum.java`
 
-Constantes résolues (jadx avait substitué des symboles de même valeur numérique) :
+Resolved constants (jadx had substituted symbols of the same numeric value):
 `UPGRADE_PROCEED_TO_COMMIT`=14, `UPGRADE_COMMIT_REQ`=15,
 `UPGRADE_SILENT_COMMIT_SUPPORTED_CFM`=33, `UPGRADE_SILENT_COMMIT_CFM`=34,
 `CMDID_TESTMODE`=13, `CMDID_RESTART`=37, `Base64.padSymbol`=61.
 
-### Bascules et modes
+### Toggles and modes
 
-| Fonction | GET | RÉPONSE | SET |
+| Function | GET | REPLY | SET |
 |---|---|---|---|
 | `ANC_MODEL_DEFAULT` | `03 10` | `83 10` | `03 11` |
 | `ANC_LEVEL` | `03 24` | `83 24` | `03 25` |
@@ -130,17 +137,17 @@ Constantes résolues (jadx avait substitué des symboles de même valeur numéri
 | `LDAC` | `03 38` | `83 38` | `03 39` |
 | `LE_AUDIO` | `03 35` | `83 35` | `03 34` ⚠ |
 
-### Volumes et niveaux
+### Volumes and levels
 
-| Fonction | GET | RÉPONSE | SET |
+| Function | GET | REPLY | SET |
 |---|---|---|---|
 | `PROMPT_VOLUME_LEVEL` | `03 19` | `83 19` | `03 20` |
 | `LEFT_EAR_MEDIA_VOLUME_CHANGE` | `03 42` | `83 42` | `03 44` |
 | `RIGHT_EAR_MEDIA_VOLUME_CHANGE` | `03 43` | `83 43` | `03 45` |
 
-### Lecture seule
+### Read only
 
-| Fonction | GET | RÉPONSE |
+| Function | GET | REPLY |
 |---|---|---|
 | `BATTERY_LEFT_GET` | `03 06` | `83 06` |
 | `BATTERY_RIGHT_GET` | `03 07` | `83 07` |
@@ -148,9 +155,9 @@ Constantes résolues (jadx avait substitué des symboles de même valeur numéri
 | `VERSION_GET` | `03 09` | `83 09` |
 | `CONN_CLASSIC_BT` | `03 17` | `83 17` |
 
-### Actions (commande unique)
+### Actions (single command)
 
-| Fonction | COMMANDE |
+| Function | COMMAND |
 |---|---|
 | `RESET` | `03 05` |
 | `REBOOT` | `03 16` |
@@ -158,32 +165,32 @@ Constantes résolues (jadx avait substitué des symboles de même valeur numéri
 | `APPLY_EQUALIZER_V1` | `0E 01` |
 | `APPLY_EQUALIZER_V2` | `0E 02` |
 
-### Divers
+### Miscellaneous
 
-| Fonction | GET | RÉPONSE | SET |
+| Function | GET | REPLY | SET |
 |---|---|---|---|
 | `CUSTOM_KEY` / `CUSTOMIZE_TOUCH_DEBUG` | `03 AA` | `83 AA` | `03 AB` |
 | `SWITCH_VOICE_PACKAGE` | `03 21` | `83 21` | `03 22` |
 | `FIND_HEADPHONES_LEFT` | `03 4A` | `83 4A` | `03 3A` |
 | `FIND_HEADPHONES_RIGHT` | `03 4B` | `83 4B` | `03 3B` |
 
-Les variantes ANC (`_WEAK_NOISE_REDUCTION`, `_NO_TRANSPARENCY_MODE`, `_ADAPTIVE`,
-`FOCUS_MODEL`) partagent `03 10`/`03 11` ; elles ne diffèrent que par la liste de modes
-exposée dans l'UI selon le produit.
+The ANC variants (`_WEAK_NOISE_REDUCTION`, `_NO_TRANSPARENCY_MODE`,
+`_ADAPTIVE`, `FOCUS_MODEL`) share `03 10`/`03 11`; they only differ by the list
+of modes the UI exposes per product.
 
 ---
 
-## 4. Valeurs de payload
+## 4. Payload values
 
-Source : `jadx-out/sources/…/data/enums/FunctionStatusEnum.java`
+Source: `jadx-out/sources/…/data/enums/FunctionStatusEnum.java`
 
-**Bascules** — `CLOSE` = `00`, `OPEN` = `01`
+**Toggles** — `CLOSE` = `00`, `OPEN` = `01`
 
-**Modes ANC** (payload de `03 11`)
+**ANC modes** (payload of `03 11`)
 
-| Mode | Valeur |
+| Mode | Value |
 |---|---|
-| `ANC_NORMAL` (arrêt) | `00` |
+| `ANC_NORMAL` (off) | `00` |
 | `ANC_ANC` | `01` |
 | `ANC_TRANSPARENT` | `02` |
 | `ANC_ADAPTIVE` | `03` |
@@ -191,9 +198,9 @@ Source : `jadx-out/sources/…/data/enums/FunctionStatusEnum.java`
 | `ANC_CHASERS` | `01` |
 | `NONE` | `FF` |
 
-**Niveaux ANC** (payload de `03 25`)
+**ANC levels** (payload of `03 25`)
 
-| Niveau | Valeur |
+| Level | Value |
 |---|---|
 | `ANC_LEVEL_1` … `ANC_LEVEL_5` | `01` … `05` |
 | `ANC_LEVEL_NORMAL_MODE` | `11` |
@@ -203,313 +210,319 @@ Source : `jadx-out/sources/…/data/enums/FunctionStatusEnum.java`
 | `ANC_LEVEL_ADAPTIVE_NOISE_REDUCTION` | `15` |
 | `ANC_LEVEL_ANTI_WIND_NOISE` | `16` |
 
-**Niveaux transparence** (payload de `03 4D`) — `VOICE_ENHANCE` = `01`,
+**Transparency levels** (payload of `03 4D`) — `VOICE_ENHANCE` = `01`,
 `STANDARD_TRANSPARENT` = `02`
 
-**Son panoramique** (payload de `03 30`) — normal = `00`, musique = `01`, film = `02`
+**Panoramic sound** (payload of `03 30`) — normal = `00`, music = `01`,
+movie = `02`
 
-**Packs vocaux** (payload de `03 22`) — EN=`00`, ZH=`01`, DE=`02`, JA=`03`, FR=`04`,
-ES=`05`, IT=`06`
+**Voice packs** (payload of `03 22`) — EN=`00`, ZH=`01`, DE=`02`, JA=`03`,
+FR=`04`, ES=`05`, IT=`06`
 
 ---
 
-## 5. Égaliseur
+## 5. Equaliser
 
-L'EQ est **paramétrique**, pas graphique. Chaque bande est un
+The EQ is **parametric**, not graphic. Each band is an
 `EqPoint { freq: Int, gain: Double, q: Double }`
 (`jadx-out/sources/…/data/model/EqPoint.java`).
 
-⚠ **Les trames EQ utilisent `vendorId = 00 1D`**, pas `00 0A`. Constaté dans
-`DefaultBleDeviceInfoModel$applyEqV3$2$1.java` : `sendDataEvent(setEqCommand,
+⚠ **EQ frames use `vendorId = 00 1D`**, not `00 0A`. Seen in
+`DefaultBleDeviceInfoModel$applyEqV3$2$1.java`: `sendDataEvent(setEqCommand,
 eqPointToByteArray(...), new byte[]{0, 29}, ...)`.
 
-**Une bande = une trame.** L'app itère sur les points et envoie une trame par bande.
+**One band = one frame.** The app iterates over the points and sends one frame
+per band.
 
-### Encodage d'une bande
+### Encoding one band
 
-`EqUtilKt.eqPointToByteArray(total, masterGain, index, point, isV1)` — ligne 87.
+`EqUtilKt.eqPointToByteArray(total, masterGain, index, point, isV1)` — line 87.
 
 ```
-v1  : [ (total & 0x0F) << 4 | (index & 0x0F) ]        1 octet   → trame de 9 o.
-v2/3: [ total, index ]                                 2 octets  → trame de 10 o.
+v1  : [ (total & 0x0F) << 4 | (index & 0x0F) ]        1 byte   → 9-byte frame
+v2/3: [ total, index ]                                 2 bytes  → 10-byte frame
 
-puis, tous en int16 big-endian :
-  masterGain × 60     (2 o.)
-  freq       × 3      (2 o.)
-  gain       × 60     (2 o.)
-  q          × 4096   (2 o.)
+then, all big-endian int16:
+  masterGain × 60     (2 b.)
+  freq       × 3      (2 b.)
+  gain       × 60     (2 b.)
+  q          × 4096   (2 b.)
 ```
 
-`index` est **1-based** (l'appelant passe `index + 1`).
+`index` is **1-based** (the caller passes `index + 1`).
 
-### Choix de version
+### Version selection
 
-`EqUtilKt.needInParallel(firmwareCode)` — ligne 140. Renvoie `true` (→ v1, empilé sur
-l'EQ classique) si la puce est Qualcomm, ou si le firmware est dans :
-`CAPSULE3_PROV2`, `CAPSULE3_PRO`, `WINGS2`, `SPACE_PRO`, `AIR5_LLITE`,
-`PearClipPro_Ldac`, `"S15"`, `"S22"`. Sinon v2/v3, où la courbe personnalisée est
-concaténée à la courbe classique.
+`EqUtilKt.needInParallel(firmwareCode)` — line 140. Returns `true` (→ v1,
+stacked on the classic EQ) if the chip is Qualcomm, or if the firmware is one
+of: `CAPSULE3_PROV2`, `CAPSULE3_PRO`, `WINGS2`, `SPACE_PRO`, `AIR5_LLITE`,
+`PearClipPro_Ldac`, `"S15"`, `"S22"`. Otherwise v2/v3, where the custom curve
+is concatenated to the classic one.
 
-⚠ Le firmware du H3 n'est pas dans cette liste → **v2/v3 attendu**, à confirmer en
-lisant `VERSION_GET` (`03 09`).
+⚠ The H3 firmware is not in that list → **v2/v3 expected**, to be confirmed by
+reading `VERSION_GET` (`03 09`).
 
 ---
 
-## 6. Commandes tactiles
+## 6. Touch controls
 
-Payload de `03 AB`. Deux énumérations, toutes deux 1-based.
+Payload of `03 AB`. Two enumerations, both 1-based.
 
-**Geste** (`CustomKeyOptionEnum`)
+**Gesture** (`CustomKeyOptionEnum`)
 
-| Geste | Code |
+| Gesture | Code |
 |---|---|
-| Clic gauche / droit | `01` / `02` |
-| Double clic gauche / droit | `03` / `04` |
-| Triple clic gauche / droit | `05` / `06` |
-| Appui long 1,5 s gauche / droit | `07` / `08` |
+| Tap left / right | `01` / `02` |
+| Double tap left / right | `03` / `04` |
+| Triple tap left / right | `05` / `06` |
+| Long press 1.5 s left / right | `07` / `08` |
 
 **Action** (`CustomKeyFunctionEnum`)
 
 | Action | Code |
 |---|---|
 | Volume + / − | `01` / `02` |
-| Lecture / pause | `03` |
-| Mode jeu | `04` |
-| Piste précédente / suivante | `05` / `06` |
-| Mode ANC | `07` |
-| Assistant vocal | `08` |
+| Play / pause | `03` |
+| Game mode | `04` |
+| Previous / next track | `05` / `06` |
+| ANC mode | `07` |
+| Voice assistant | `08` |
 
-⚠ `setCustomKey(byte[])` reçoit le tableau déjà construit par l'appelant.
-`SET_CUSTOMIZE_TOUCH_DEMO` vaut `{0x00, 0x00}`, ce qui suggère fortement un payload
-`[geste, action]` de 2 octets — **inféré, non confirmé**.
+⚠ `setCustomKey(byte[])` receives an array already built by the caller.
+`SET_CUSTOMIZE_TOUCH_DEMO` is `{0x00, 0x00}`, which strongly suggests a 2-byte
+`[gesture, action]` payload — **inferred, not confirmed**.
 
 ---
 
-## 7. Confirmé sur le fil ✅
+## 7. Confirmed on the wire ✅
 
-Validé le 2026-07-29 avec `probe/` sur le H3 (firmware `S5_20250605_V0.4.9`),
-via **RFCOMM/SPP**. Le transport SPP est donc le bon choix : il répond.
+Validated on 2026-07-29 with `probe/` against the H3 (firmware
+`S5_20250605_V0.4.9`), over **RFCOMM/SPP**. SPP is therefore the right target:
+it answers.
 
 ### Transport
 
-`sdptool browse` ne renvoie rien d'exploitable ; la découverte par balayage de canaux
-fonctionne. Sur le H3 : **canaux 11 et 12 ouverts**, canal 10 occupé (`EBUSY`).
-Le canal **11** répond au protocole.
+`sdptool browse` returns nothing usable; discovery by channel sweep works. On
+the H3: **channels 11 and 12 open**, channel 10 busy (`EBUSY`). Channel **11**
+answers the protocol.
 
-⚠ **Les réponses sont intermittentes.** Une même commande peut ne rien renvoyer puis
-répondre à l'essai suivant. Tout client doit implémenter un **retry** — ne pas conclure
-« fonction non supportée » sur un seul échec.
+⚠ **Replies are intermittent.** The same command can return nothing and then
+answer on the next attempt. Every client must implement a **retry** — do not
+conclude "feature unsupported" from a single failure.
 
-### Corrections apportées à l'analyse statique
+### Corrections to the static analysis
 
-| Point | Analyse statique | Réalité mesurée |
+| Point | Static analysis | Measured reality |
 |---|---|---|
-| `version` en réponse | supposé `0x04` | **`0x03`** (la requête reste `0x04`) |
-| Payloads scalaires | supposés 1 octet | **2 octets, big-endian** |
+| `version` in replies | assumed `0x04` | **`0x03`** (the request stays `0x04`) |
+| Scalar payloads | assumed 1 byte | **2 bytes, big-endian** |
 
-Une réponse batterie est `00 64`, pas `64`. Un mode ANC est `00 02`, pas `02`.
-La valeur utile est dans le **dernier** octet.
+A battery reply is `00 64`, not `64`. An ANC mode is `00 02`, not `02`. The
+useful value sits in the **last** byte.
 
-### Relevés
+### Readings
 
-| Commande | Réponse brute | Décodage |
+| Command | Raw reply | Decoding |
 |---|---|---|
-| `03 06` batterie G | `FF 03 00 02 00 0A 83 06 00 64` | 100 % |
-| `03 07` batterie D | `… 83 07 00 64` | 100 % |
-| `03 23` batterie étui | `… 83 23 00 5F` | 95 % |
+| `03 06` left battery | `FF 03 00 02 00 0A 83 06 00 64` | 100% |
+| `03 07` right battery | `… 83 07 00 64` | 100% |
+| `03 23` case battery | `… 83 23 00 5F` | 95% |
 | `03 09` firmware | `… 83 09 00` + ASCII | `S5_20250605_V0.4.9` |
-| `03 10` mode ANC | `… 83 10 00 02` | `02` = transparence |
-| `03 38` LDAC | `… 83 38 00 01` | activé |
-| `03 35` LE Audio | `… 83 35 00 00` | désactivé |
-| `03 0E` mode jeu | `… 83 0E 00 00` | désactivé |
-| `03 14` multipoint | `… 83 14 00 00` | désactivé |
+| `03 10` ANC mode | `… 83 10 00 02` | `02` = transparency |
+| `03 38` LDAC | `… 83 38 00 01` | on |
+| `03 35` LE Audio | `… 83 35 00 00` | off |
+| `03 0E` game mode | `… 83 0E 00 00` | off |
+| `03 14` multipoint | `… 83 14 00 00` | off |
 
-**Validation croisée** : `03 38` renvoie « LDAC activé », ce qui concorde avec le codec
-LDAC effectivement négocié en A2DP (`api.bluez5.codec = "ldac"`, transport BlueZ
-`Configuration` = Sony `0x012D` / codec `0x00AA`). Deux voies indépendantes, même
-conclusion → le décodage est fiable.
+**Cross-validation**: `03 38` reports "LDAC on", which matches the LDAC codec
+actually negotiated over A2DP (`api.bluez5.codec = "ldac"`, BlueZ transport
+`Configuration` = Sony `0x012D` / codec `0x00AA`). Two independent paths, same
+conclusion → the decoding is sound.
 
-`03 0C` (détection intra-auriculaire) n'a jamais répondu en 3 essais — seule fonction
-qui semble réellement absente du H3.
+`03 0C` (in-ear detection) never answered across 3 attempts — the only feature
+that genuinely looks absent from the H3.
 
-### Réponses composées
+### Composite replies
 
-**`83 AA` commandes tactiles** — `00 | 0102 0201 0303 0403 0504 0608 0707 0806`
+**`83 AA` touch controls** — `00 | 0102 0201 0303 0403 0504 0608 0707 0806`
 
-8 paires `[geste, action]` après un octet de tête. **Ceci confirme le format
-`[geste, action]` qui n'était qu'une inférence en §6.**
+8 `[gesture, action]` pairs after one header byte. **This confirms the
+`[gesture, action]` format that was only an inference in section 6.**
 
-| Geste | Code | Action | Code |
+| Gesture | Code | Action | Code |
 |---|---|---|---|
-| Clic gauche | `01` | Volume − | `02` |
-| Clic droit | `02` | Volume + | `01` |
-| Double clic gauche | `03` | Lecture/pause | `03` |
-| Double clic droit | `04` | Lecture/pause | `03` |
-| Triple clic gauche | `05` | Mode jeu | `04` |
-| Triple clic droit | `06` | Assistant vocal | `08` |
-| Appui long gauche | `07` | Mode ANC | `07` |
-| Appui long droit | `08` | Piste suivante | `06` |
+| Tap left | `01` | Volume − | `02` |
+| Tap right | `02` | Volume + | `01` |
+| Double tap left | `03` | Play/pause | `03` |
+| Double tap right | `04` | Play/pause | `03` |
+| Triple tap left | `05` | Game mode | `04` |
+| Triple tap right | `06` | Voice assistant | `08` |
+| Long press left | `07` | ANC mode | `07` |
+| Long press right | `08` | Next track | `06` |
 
-**`83 24` niveau ANC** — `0011 0012 0113 0014 00`
+**`83 24` ANC level** — `0011 0012 0113 0014 00`
 
-Paires `[actif, code]` : `01 13` → mode actif = `ANC_LEVEL_OUTDOOR_NOISE_REDUCTION`.
-Les codes `11`,`12`,`13`,`14` correspondent bien aux modes de scène de §4.
+`[active, code]` pairs: `01 13` → active mode =
+`ANC_LEVEL_OUTDOOR_NOISE_REDUCTION`. The codes `11`, `12`, `13`, `14` do match
+the scene modes of section 4.
 
-**`83 4C` niveau transparence** — `00 01 00 02 01` (structure non élucidée).
+**`83 4C` transparency level** — `00 01 00 02 01` (structure not yet worked
+out at that point; resolved below).
 
-### Écriture ✅
+### Writing ✅
 
-Premier `set` validé sur le fil (mode ANC, `02` → `01`) :
-
-```
-→ FF 04 00 01 00 0A 03 11 01      (set, payload 1 octet)
-← FF 03 00 02 00 0A 83 10 00 01   (ack, payload 2 octets)
-```
-
-Deux asymétries à retenir pour l'implémentation :
-
-1. **Le payload d'écriture fait 1 octet**, alors que les réponses en renvoient 2.
-   L'app envoie bien `FunctionStatusEnum.getStatus()` = `new byte[]{1}`.
-2. **L'acquittement utilise l'opcode de réponse du `get`** (`83 10`), pas `83 11`.
-   Un `set` est donc confirmé par une notification d'état, pas par un écho de la
-   commande d'écriture. Un client doit attendre `83 <get>`, pas `83 <set>`.
-
-Relecture après écriture : `83 10 00 01` — cohérent. Validation humaine : invite
-vocale « ANC MODE ON » et réduction de bruit effectivement audible.
-
-### ⚠ Ne JAMAIS réessayer une écriture
-
-Plusieurs `set` **prennent effet sans acquitter** : mode ANC, sous-mode ANC,
-multipoint. Un client qui interprète l'absence de réponse comme un échec et renvoie
-la commande **rejoue l'effet de bord**.
-
-Observé en conditions réelles : une écriture `03 11 02` réémise 3 fois par la logique
-de retry a déclenché **trois invites vocales « passthrough »** pour un seul changement
-voulu.
-
-**Règle** : réessayer librement les `get`, jamais les `set`. Pour vérifier qu'une
-écriture a pris, **relire l'état** — ne pas renvoyer la commande.
-
-### Réponses en liste : `en-tête | paires (code, actif)`
-
-Structure commune à `83 24`, `83 4C` et `83 AA` : un octet de tête, puis des paires.
-
-Confirmé par écriture : `03 25 = 0x14` déplace le drapeau `01` sur la paire du code
-`14`, et `03 25 = 0x12` le ramène sur `12`.
+First `set` validated on the wire (ANC mode, `02` → `01`):
 
 ```
-avant : 00 | 11 00 | 12 01 | 13 00 | 14 00   → actif = 12 (intérieur)
-après : 00 | 11 00 | 12 00 | 13 00 | 14 01   → actif = 14 (trafic)
+→ FF 04 00 01 00 0A 03 11 01      (set, 1-byte payload)
+← FF 03 00 02 00 0A 83 10 00 01   (ack, 2-byte payload)
 ```
 
-Les 4 sous-modes ANC `11`/`12`/`13`/`14` correspondent exactement aux 4 entrées de
-l'app Android : *annulation adaptative*, *à l'intérieur*, *bruits extérieurs*,
-*mode trafic* (confirmé par l'utilisateur sur l'UI officielle).
+Two asymmetries to carry into any implementation:
 
-`83 4C` se décode pareil : `00 | 01 00 | 02 01` → 2 niveaux de transparence,
-actif = `02` (transparence standard).
+1. **The write payload is 1 byte**, while replies return 2. The app does send
+   `FunctionStatusEnum.getStatus()` = `new byte[]{1}`.
+2. **The acknowledgement uses the reply opcode of the `get`** (`83 10`), not
+   `83 11`. A `set` is therefore confirmed by a state notification, not by an
+   echo of the write command. A client must wait for `83 <get>`, not
+   `83 <set>`.
 
-### Égaliseur ✅
+Read back after the write: `83 10 00 01` — consistent. Human validation: the
+"ANC MODE ON" voice prompt, and audibly effective noise cancelling.
 
-**Validé sur le fil, audible.** Une bande +6 dB à 100 Hz produit un renforcement des
-basses nettement perceptible ; le retour à 0 dB le supprime.
+### ⚠ NEVER retry a write
+
+Several `set` commands **take effect without acknowledging**: ANC mode, ANC
+sub-mode, multipoint. A client that reads the absence of a reply as a failure
+and resends the command **replays the side effect**.
+
+Observed in the field: a `03 11 02` write resent 3 times by retry logic
+triggered **three "passthrough" voice prompts** for a single intended change.
+
+**Rule**: retry `get` freely, never `set`. To check a write landed, **read the
+state back** — do not resend the command.
+
+### List replies: `header | (code, active) pairs`
+
+Structure shared by `83 24`, `83 4C` and `83 AA`: one header byte, then pairs.
+
+Confirmed by writing: `03 25 = 0x14` moves the `01` flag onto the pair of code
+`14`, and `03 25 = 0x12` brings it back to `12`.
+
+```
+before: 00 | 11 00 | 12 01 | 13 00 | 14 00   → active = 12 (indoor)
+after : 00 | 11 00 | 12 00 | 13 00 | 14 01   → active = 14 (traffic)
+```
+
+The 4 ANC sub-modes `11`/`12`/`13`/`14` match exactly the 4 entries of the
+Android app: *adaptive cancellation*, *indoor*, *outdoor noise*, *traffic mode*
+(confirmed by the user against the official UI).
+
+`83 4C` decodes the same way: `00 | 01 00 | 02 01` → 2 transparency levels,
+active = `02` (standard transparency).
+
+### Equaliser ✅
+
+**Validated on the wire, audible.** One +6 dB band at 100 Hz produces a clearly
+perceptible bass lift; returning to 0 dB removes it.
 
 ```
 → FF 04 00 0A 00 1D 0E 02 01 01 0000 012C 0168 1000
-                    └vendorId EQ  └cmd  └total,index, mg×60, f×3, g×60, q×4096
+                    └EQ vendorId  └cmd  └total,index, mg×60, f×3, g×60, q×4096
 ← FF 03 00 01 00 1D 0F 82 01
 ```
 
-⚠ **La famille EQ ne suit pas la convention `réponse = requête | 0x80`.**
-Requête `0E 02` → réponse **`0F 82`** (1er octet +1, 2e octet avec bit 7 armé).
-Payload `01` = succès. Un client qui attendrait `8E 02` resterait bloqué.
+⚠ **The EQ family does not follow the `reply = request | 0x80` convention.**
+Request `0E 02` → reply **`0F 82`** (first byte +1, second byte with bit 7
+set). Payload `01` = success. A client waiting for `8E 02` would hang.
 
-L'encodage de §5 est donc correct tel quel, y compris les facteurs d'échelle
-`freq × 3`, `gain × 60`, `q × 4096`.
+The encoding of section 5 is therefore correct as written, including the scale
+factors `freq × 3`, `gain × 60`, `q × 4096`.
 
-### Multipoint : effet de bord sur le canal de contrôle
+### Multipoint: side effect on the control channel
 
-Activer le multipoint (`03 15 = 01`) fonctionne, mais provoque une reconfiguration des
-liens :
+Enabling multipoint (`03 15 = 01`) works, but triggers a link reconfiguration:
 
-1. l'écriture n'acquitte pas ;
-2. le canal RFCOMM devient brièvement `EBUSY` ;
-3. si un second appareil se connecte, **il monopolise le canal de contrôle SPP** et
-   tous les canaux disparaissent du scan.
+1. the write does not acknowledge;
+2. the RFCOMM channel briefly becomes `EBUSY`;
+3. if a second device connects, **it monopolises the SPP control channel** and
+   every channel disappears from the scan.
 
-Constaté : une fois le multipoint actif, le téléphone (app PeatsAudio ouverte) a repris
-le lien et les canaux 11/12 ont disparu ; ils sont revenus après extinction du
-Bluetooth du téléphone. Un client desktop doit prévoir ce cas et le signaler à
-l'utilisateur plutôt que de conclure à une panne.
+Observed: once multipoint was on, the phone (with the PeatsAudio app open) took
+the link over and channels 11/12 vanished; they came back after turning the
+phone's Bluetooth off. A desktop client must anticipate this and tell the user,
+rather than reporting a failure.
 
-### ⚠ LDAC et multipoint sont mutuellement exclusifs
+### ⚠ LDAC and multipoint are mutually exclusive
 
-Confirmé sur le fil. État initial : `03 38 = 01` (LDAC), `03 14 = 00` (multipoint off),
-codec A2DP négocié = **LDAC**.
+Confirmed on the wire. Initial state: `03 38 = 01` (LDAC), `03 14 = 00`
+(multipoint off), negotiated A2DP codec = **LDAC**.
 
-Après `03 15 = 01` (activation multipoint), **sans aucune commande LDAC de ma part** :
+After `03 15 = 01` (enabling multipoint), **with no LDAC command whatsoever**:
 
 ```
-03 38  →  00 00   LDAC désactivé automatiquement par le firmware
-03 14  →  00 01   multipoint activé
+03 38  →  00 00   LDAC turned off automatically by the firmware
+03 14  →  00 01   multipoint enabled
 ```
 
-Et le codec A2DP renégocié par PipeWire retombe sur **aptX**
+And the A2DP codec renegotiated by PipeWire falls back to **aptX**
 (`api.bluez5.codec = "aptx"`).
 
-Le firmware arbitre seul : la bande passante ne permet pas du LDAC 990 kbps sur deux
-liens simultanés. Une UI honnête doit présenter ces deux réglages comme un choix
-exclusif et expliquer la conséquence audio, plutôt que comme deux bascules
-indépendantes.
+The firmware arbitrates on its own: the bandwidth does not allow LDAC at
+990 kbps over two simultaneous links. An honest UI must present these two
+settings as an exclusive choice and explain the audio consequence, rather than
+as two independent toggles.
 
-### Canal RFCOMM 12
+### RFCOMM channel 12
 
-Second point d'entrée SPP, **protocole identique** — `03 06`, `03 10`, `03 09` y
-répondent exactement comme sur le canal 11. Utilisable en repli.
+Second SPP entry point, **identical protocol** — `03 06`, `03 10`, `03 09`
+answer there exactly as on channel 11. Usable as a fallback.
 
-### Matrice de support du H3
+### H3 support matrix
 
-16 commandes sur 31 répondent de façon stable. Les non-réponses sont reproductibles
-sur 3 essais avec délai de stabilisation : ce sont de vraies fonctions absentes.
+16 commands out of 31 answer reliably. The non-answers are reproducible over 3
+attempts with the settle delay applied: they are genuinely absent features.
 
-**Supportées** — batteries L/R/étui, firmware, mode ANC, sous-mode ANC, niveau
-transparence, mode jeu, multipoint, LDAC, LE Audio, commandes tactiles, désactivation
-tactile, volume des invites (`00 32` = 50), pack vocal (`00 00` = anglais), connexion
-BT classique, EQ.
+**Supported** — L/R/case batteries, firmware, ANC mode, ANC sub-mode,
+transparency level, game mode, multipoint, LDAC, LE Audio, touch controls,
+touch lockout, prompt volume (`00 32` = 50), voice pack (`00 00` = English),
+classic BT connection, EQ.
 
-**Absentes du H3** — détection intra-auriculaire, effet lumineux, mode cinéma, son
-panoramique, EQ dynamique, basses dynamiques, Dolby, effet spatial, volume par oreille,
-volume personnalisé, volume adaptatif, évacuation d'eau, détection de chute, mode privé.
+**Absent from the H3** — in-ear detection, light effect, movie mode, panoramic
+sound, dynamic EQ, dynamic bass, Dolby, spatial effect, per-ear volume,
+personalised volume, adaptive volume, water drain, fall detection, privacy
+mode.
 
-### Intermittence : résolue
+### Intermittency: resolved
 
-Cause identifiée : les commandes émises trop tôt après l'établissement du lien RFCOMM
-restent sans réponse. **Un délai de ~600 ms après connexion** avant la première
-émission, plus une réutilisation de la connexion pour les commandes suivantes, rend les
-lectures fiables (16/16 des fonctions supportées lors du sweep complet).
+Cause identified: commands sent too soon after the RFCOMM link comes up get no
+reply. **A ~600 ms delay after connecting** before the first send, plus reusing
+the connection for subsequent commands, makes reads reliable (16/16 of the
+supported features on a full sweep).
 
-### Conséquence pour l'EQ
+### Consequence for the EQ
 
-Firmware `S5` : absent de la liste de `needInParallel()` (qui contient `S15`, `S22`…)
-→ **EQ v2/v3**, comme inféré en §5. Reste à valider en écriture.
+Firmware `S5`: absent from the `needInParallel()` list (which holds `S15`,
+`S22`…) → **EQ v2/v3**, as inferred in section 5. Later validated on writes.
 
 ---
 
-## 8. Ce qui reste incertain
+## 8. What remains uncertain
 
-Tous les points majeurs sont clos. Reste :
+All the major points are closed. Remaining:
 
-1. ~~Trames validées sur le fil.~~ ✅ lecture **et** écriture.
-2. `setCustomKey` : format `[geste, action]` confirmé **en lecture** ;
-   **écriture jamais testée** — seul point fonctionnel encore ouvert.
-3. ~~Le H3 répond-il sur SPP ?~~ ✅ canaux 11 et 12.
-4. ~~Version d'EQ acceptée.~~ ✅ v2/v3, validé et audible.
-5. ~~Canal RFCOMM 12.~~ ✅ identique au 11.
-6. ~~Structure de `83 4C`.~~ ✅ paires (code, actif).
-7. ~~Cause de l'intermittence.~~ ✅ délai de stabilisation après connexion.
-8. Sémantique de `flags` (toujours `00` dans tous les appels observés).
-9. EQ multi-bandes : une seule bande testée. L'app itère sur N bandes ; le
-   comportement avec `total > 1` et l'ordre des `index` n'est pas vérifié.
-10. `masterGain` : toujours envoyé à 0 dans les tests ; effet non observé.
-11. `handleData()` route vers `sceneLevelHandle()` pour certains payloads — non analysé.
-12. Aucun test de `RESET` (`03 05`) ni `REBOOT` (`03 16`) — volontairement évités.
+1. ~~Frames validated on the wire.~~ ✅ reads **and** writes.
+2. `setCustomKey`: the `[gesture, action]` format is confirmed **on reads**;
+   **writing was never tested** — the only functional point still open.
+3. ~~Does the H3 answer on SPP?~~ ✅ channels 11 and 12.
+4. ~~Accepted EQ version.~~ ✅ v2/v3, validated and audible.
+5. ~~RFCOMM channel 12.~~ ✅ identical to 11.
+6. ~~Structure of `83 4C`.~~ ✅ (code, active) pairs.
+7. ~~Cause of the intermittency.~~ ✅ settle delay after connecting.
+8. Semantics of `flags` (always `00` across every observed call).
+9. Multi-band EQ: only one band was tested. The app iterates over N bands; the
+   behaviour with `total > 1` and the ordering of `index` are unverified.
+10. `masterGain`: always sent as 0 in the tests; its effect was not observed.
+11. `handleData()` routes to `sceneLevelHandle()` for some payloads — not
+    analysed.
+12. No test of `RESET` (`03 05`) or `REBOOT` (`03 16`) — deliberately avoided.

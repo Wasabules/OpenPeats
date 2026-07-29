@@ -1,12 +1,19 @@
-// Sonde de validation du protocole PeatsAudio sur RFCOMM/SPP.
+//go:build linux
+
+// Probe validating the PeatsAudio protocol over RFCOMM/SPP.
 //
-// Objectif : confirmer sur le fil ce que PROTOCOL.md décrit par analyse statique.
-// Envoie une ou plusieurs commandes sur une même connexion, affiche les trames
-// émises et décode les réponses.
+// Purpose: confirm on the wire what PROTOCOL.md describes from static
+// analysis. Sends one or more commands over a single connection, prints the
+// frames it emits and decodes the replies.
 //
-// Lecture seule par défaut : toute commande hors de la liste blanche exige -allow-write.
+// Read-only by default: any command outside the allow-list requires
+// -allow-write.
 //
-// Aucune dépendance externe — sockets AF_BLUETOOTH/BTPROTO_RFCOMM via syscall.
+// No external dependency - AF_BLUETOOTH/BTPROTO_RFCOMM sockets via syscall.
+//
+// This is an exploration tool, not a driver, and its output is meant for
+// whoever is reverse-engineering the protocol: English only, no i18n. The
+// applications are where translated strings belong.
 package main
 
 import (
@@ -28,8 +35,8 @@ const (
 	sof   = 0xFF
 	flags = 0x00
 
-	// L'app émet ses requêtes en version 0x04 ; les écouteurs répondent en 0x03.
-	// Confirmé sur le fil (H3).
+	// The app sends its requests as version 0x04; the earbuds answer with
+	// 0x03. Confirmed on the wire (H3).
 	versionRequest  = 0x04
 	versionResponse = 0x03
 )
@@ -39,39 +46,39 @@ var (
 	vendorEQ      = [2]byte{0x00, 0x1D}
 )
 
-// Commandes de lecture connues — sûres, elles n'écrivent rien dans les écouteurs.
+// Known read commands - safe, they write nothing to the earbuds.
 var readOnlyCmds = map[[2]byte]string{
-	{0x03, 0x06}: "batterie gauche",
-	{0x03, 0x07}: "batterie droite",
-	{0x03, 0x23}: "batterie étui",
-	{0x03, 0x09}: "version firmware",
-	{0x03, 0x10}: "mode ANC",
-	{0x03, 0x24}: "niveau ANC",
-	{0x03, 0x4C}: "niveau transparence",
-	{0x03, 0x0C}: "détection intra-auriculaire",
-	{0x03, 0x0E}: "mode jeu",
+	{0x03, 0x06}: "left battery",
+	{0x03, 0x07}: "right battery",
+	{0x03, 0x23}: "case battery",
+	{0x03, 0x09}: "firmware version",
+	{0x03, 0x10}: "ANC mode",
+	{0x03, 0x24}: "ANC level",
+	{0x03, 0x4C}: "transparency level",
+	{0x03, 0x0C}: "in-ear detection",
+	{0x03, 0x0E}: "game mode",
 	{0x03, 0x14}: "multipoint",
 	{0x03, 0x38}: "LDAC",
 	{0x03, 0x35}: "LE Audio",
-	{0x03, 0xAA}: "commandes tactiles",
-	{0x03, 0x12}: "tactile désactivé",
-	{0x03, 0x0A}: "effet lumineux",
-	{0x03, 0x27}: "mode cinéma",
-	{0x03, 0x29}: "son panoramique",
-	{0x03, 0x31}: "EQ dynamique",
-	{0x03, 0x3C}: "basses dynamiques",
+	{0x03, 0xAA}: "touch mapping",
+	{0x03, 0x12}: "touch disabled",
+	{0x03, 0x0A}: "light effect",
+	{0x03, 0x27}: "movie mode",
+	{0x03, 0x29}: "panoramic sound",
+	{0x03, 0x31}: "dynamic EQ",
+	{0x03, 0x3C}: "dynamic bass",
 	{0x03, 0x48}: "Dolby",
-	{0x03, 0x57}: "effet spatial",
-	{0x03, 0x19}: "volume des invites",
-	{0x03, 0x21}: "pack vocal",
-	{0x03, 0x42}: "volume oreille gauche",
-	{0x03, 0x43}: "volume oreille droite",
-	{0x03, 0x40}: "volume personnalisé",
-	{0x03, 0x46}: "volume adaptatif",
-	{0x03, 0x50}: "évacuation d'eau",
-	{0x03, 0x55}: "détection de chute",
-	{0x03, 0x6B}: "mode privé",
-	{0x03, 0x17}: "connexion BT classique",
+	{0x03, 0x57}: "spatial effect",
+	{0x03, 0x19}: "prompt volume",
+	{0x03, 0x21}: "voice pack",
+	{0x03, 0x42}: "left ear volume",
+	{0x03, 0x43}: "right ear volume",
+	{0x03, 0x40}: "personalised volume",
+	{0x03, 0x46}: "adaptive volume",
+	{0x03, 0x50}: "water drain",
+	{0x03, 0x55}: "fall detection",
+	{0x03, 0x6B}: "privacy mode",
+	{0x03, 0x17}: "classic BT connection",
 }
 
 type sockaddrRC struct {
@@ -85,27 +92,27 @@ func parseMAC(s string) ([6]byte, error) {
 	var out [6]byte
 	parts := strings.Split(strings.TrimSpace(s), ":")
 	if len(parts) != 6 {
-		return out, fmt.Errorf("adresse MAC invalide: %q", s)
+		return out, fmt.Errorf("invalid MAC address: %q", s)
 	}
-	// bdaddr est en ordre inverse (little-endian).
+	// bdaddr is stored in reverse order (little-endian).
 	for i, p := range parts {
 		v, err := strconv.ParseUint(p, 16, 8)
 		if err != nil {
-			return out, fmt.Errorf("octet MAC invalide %q: %w", p, err)
+			return out, fmt.Errorf("invalid MAC byte %q: %w", p, err)
 		}
 		out[5-i] = byte(v)
 	}
 	return out, nil
 }
 
-// fdSet arme le bit correspondant au descripteur dans un FdSet.
+// fdSet sets the bit matching the descriptor in an FdSet.
 func fdSet(s *syscall.FdSet, fd int) {
-	bits := 64 // taille d'un élément de FdSet.Bits sur linux/amd64
+	bits := 64 // size of one FdSet.Bits element on linux/amd64
 	s.Bits[fd/bits] |= 1 << (uint(fd) % uint(bits))
 }
 
-// connectRFCOMM ouvre un socket RFCOMM avec un vrai timeout de connexion
-// (connect non bloquant + select).
+// connectRFCOMM opens an RFCOMM socket with a real connection timeout
+// (non-blocking connect + select).
 func connectRFCOMM(addr [6]byte, channel uint8, timeout time.Duration) (int, error) {
 	fd, err := syscall.Socket(syscall.AF_BLUETOOTH, syscall.SOCK_STREAM, btprotoRFCOMM)
 	if err != nil {
@@ -138,7 +145,7 @@ func connectRFCOMM(addr [6]byte, channel uint8, timeout time.Duration) (int, err
 		}
 		if n == 0 {
 			syscall.Close(fd)
-			return -1, errors.New("timeout de connexion")
+			return -1, errors.New("connection timed out")
 		}
 		soErr, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
 		if err != nil {
@@ -158,7 +165,7 @@ func connectRFCOMM(addr [6]byte, channel uint8, timeout time.Duration) (int, err
 	return fd, nil
 }
 
-// buildFrame assemble une trame PeatsAudio (cf. PROTOCOL.md §2).
+// buildFrame assembles a PeatsAudio frame (see PROTOCOL.md section 2).
 //
 //	FF | 04 | 00 | len(payload) | vendorId(2) | command(2) | payload
 func buildFrame(cmd [2]byte, payload []byte, vendor [2]byte) []byte {
@@ -188,12 +195,12 @@ func (f frame) String() string {
 	)
 }
 
-// parseFrames découpe un flux RFCOMM en trames. Retourne les trames complètes
-// et le reliquat non consommé.
+// parseFrames splits an RFCOMM stream into frames. Returns the complete
+// frames and the unconsumed remainder.
 func parseFrames(buf []byte) ([]frame, []byte) {
 	var out []frame
 	for {
-		// Resynchronisation sur le SOF.
+		// Resynchronise on the SOF.
 		i := 0
 		for i < len(buf) && buf[i] != sof {
 			i++
@@ -219,24 +226,24 @@ func parseFrames(buf []byte) ([]frame, []byte) {
 }
 
 var ancModes = map[byte]string{
-	0x00: "normal (ANC arrêté)", 0x01: "ANC actif", 0x02: "transparence",
-	0x03: "ANC adaptatif", 0x04: "ANC faible", 0xFF: "non défini",
+	0x00: "normal (ANC off)", 0x01: "ANC on", 0x02: "transparency",
+	0x03: "adaptive ANC", 0x04: "weak ANC", 0xFF: "undefined",
 }
 
 var ancLevels = map[byte]string{
-	0x01: "niveau 1", 0x02: "niveau 2", 0x03: "niveau 3",
-	0x04: "niveau 4", 0x05: "niveau 5",
-	0x11: "adaptatif", 0x12: "intérieur", 0x13: "extérieur",
-	0x14: "trafic", 0x15: "réduction adaptative", 0x16: "anti-vent",
+	0x01: "level 1", 0x02: "level 2", 0x03: "level 3",
+	0x04: "level 4", 0x05: "level 5",
+	0x11: "adaptive", 0x12: "indoor", 0x13: "outdoor",
+	0x14: "traffic", 0x15: "adaptive reduction", 0x16: "anti-wind",
 }
 
 var transparentLevels = map[byte]string{
-	0x01: "voix renforcée", 0x02: "transparence standard",
+	0x01: "voice boost", 0x02: "standard transparency",
 }
 
-// describePairs décode les réponses en liste : un octet de tête, puis des paires
-// (code, actif). Confirmé sur le fil en écrivant 03 25 = 14 et en observant le
-// drapeau se déplacer sur la paire correspondante.
+// describePairs decodes list replies: one header byte, then (code, active)
+// pairs. Confirmed on the wire by writing 03 25 = 14 and watching the flag
+// move onto the matching pair.
 func describePairs(p []byte, names map[byte]string) string {
 	if len(p) < 3 {
 		return ""
@@ -254,22 +261,22 @@ func describePairs(p []byte, names map[byte]string) string {
 		}
 	}
 	if active == "" {
-		active = "aucun"
+		active = "none"
 	}
-	return fmt.Sprintf("actif=%s | disponibles: %s", active, strings.Join(avail, ", "))
+	return fmt.Sprintf("active=%s | available: %s", active, strings.Join(avail, ", "))
 }
 
 var keyGestures = map[byte]string{
-	0x01: "clic G", 0x02: "clic D", 0x03: "double clic G", 0x04: "double clic D",
-	0x05: "triple clic G", 0x06: "triple clic D", 0x07: "appui long G", 0x08: "appui long D",
+	0x01: "tap L", 0x02: "tap R", 0x03: "double tap L", 0x04: "double tap R",
+	0x05: "triple tap L", 0x06: "triple tap R", 0x07: "long press L", 0x08: "long press R",
 }
 
 var keyActions = map[byte]string{
-	0x01: "volume +", 0x02: "volume −", 0x03: "lecture/pause", 0x04: "mode jeu",
-	0x05: "piste préc.", 0x06: "piste suiv.", 0x07: "mode ANC", 0x08: "assistant vocal",
+	0x01: "volume +", 0x02: "volume -", 0x03: "play/pause", 0x04: "game mode",
+	0x05: "prev track", 0x06: "next track", 0x07: "ANC mode", 0x08: "voice assistant",
 }
 
-// describe donne une lecture humaine du payload quand on sait l'interpréter.
+// describe gives a human reading of the payload when we know how to.
 func describe(f frame) string {
 	if f.Command[0]&0x80 == 0 {
 		return ""
@@ -279,8 +286,8 @@ func describe(f frame) string {
 	if len(p) == 0 {
 		return ""
 	}
-	// Confirmé sur le fil : les payloads scalaires font 2 octets big-endian.
-	// La valeur utile est dans le dernier octet.
+	// Confirmed on the wire: scalar payloads are two big-endian bytes. The
+	// useful value sits in the last byte.
 	v := p[len(p)-1]
 
 	switch base {
@@ -288,10 +295,10 @@ func describe(f frame) string {
 		if v <= 100 {
 			return fmt.Sprintf("%d %%", v)
 		}
-		return fmt.Sprintf("hors plage batterie (%d)", v)
+		return fmt.Sprintf("out of battery range (%d)", v)
 
 	case [2]byte{0x03, 0x09}:
-		// 1er octet de statut, puis version en ASCII.
+		// One status byte, then the version in ASCII.
 		return "firmware: " + strings.TrimRight(string(p[1:]), "\x00")
 
 	case [2]byte{0x03, 0x10}:
@@ -306,7 +313,7 @@ func describe(f frame) string {
 		return describePairs(p, transparentLevels)
 
 	case [2]byte{0x03, 0xAA}:
-		// Octet de tête puis paires [geste, action].
+		// Header byte then [gesture, action] pairs.
 		var out []string
 		for i := 1; i+1 < len(p); i += 2 {
 			g, a := keyGestures[p[i]], keyActions[p[i+1]]
@@ -328,9 +335,9 @@ func describe(f frame) string {
 		[2]byte{0x03, 0x55}, [2]byte{0x03, 0x6B}:
 		switch v {
 		case 0x00:
-			return "désactivé"
+			return "off"
 		case 0x01:
-			return "activé"
+			return "on"
 		}
 	}
 	return ""
@@ -341,15 +348,15 @@ func parseCmd(s string) ([2]byte, error) {
 	clean := strings.ReplaceAll(strings.ReplaceAll(s, " ", ""), "0x", "")
 	b, err := hex.DecodeString(clean)
 	if err != nil {
-		return c, fmt.Errorf("commande hex invalide %q: %w", s, err)
+		return c, fmt.Errorf("invalid hex command %q: %w", s, err)
 	}
 	if len(b) != 2 {
-		return c, fmt.Errorf("la commande doit faire 2 octets, reçu %d", len(b))
+		return c, fmt.Errorf("the command must be 2 bytes, got %d", len(b))
 	}
 	return [2]byte{b[0], b[1]}, nil
 }
 
-// readAvailable draine le socket pendant la fenêtre donnée.
+// readAvailable drains the socket for the given window.
 func readAvailable(fd int, window time.Duration, acc []byte) ([]frame, []byte, []byte) {
 	deadline := time.Now().Add(window)
 	buf := make([]byte, 1024)
@@ -359,8 +366,8 @@ func readAvailable(fd int, window time.Duration, acc []byte) ([]frame, []byte, [
 	for time.Now().Before(deadline) {
 		n, err := syscall.Read(fd, buf)
 		if err != nil {
-			// EINTR : le runtime Go interrompt les syscalls bloquants pour la
-			// préemption — il faut simplement réessayer.
+			// EINTR: the Go runtime interrupts blocking syscalls for
+			// preemption - just retry.
 			if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK) ||
 				errors.Is(err, syscall.EINTR) {
 				continue
@@ -376,13 +383,13 @@ func readAvailable(fd int, window time.Duration, acc []byte) ([]frame, []byte, [
 		fs, acc = parseFrames(acc)
 		all = append(all, fs...)
 		if len(all) > 0 {
-			break // réponse obtenue, inutile d'attendre la fenêtre complète
+			break // got a reply, no point waiting out the whole window
 		}
 	}
 	return all, acc, raw
 }
 
-// exchange envoie une commande et attend une réponse, avec retry.
+// exchange sends a command and waits for a reply, with retries.
 func exchange(fd int, cmd [2]byte, payload []byte, vendor [2]byte,
 	window time.Duration, retries int, verbose bool) ([]frame, []byte) {
 
@@ -395,7 +402,7 @@ func exchange(fd int, cmd [2]byte, payload []byte, vendor [2]byte,
 			fmt.Printf("  → %s\n", strings.ToUpper(hex.EncodeToString(out)))
 		}
 		if _, err := syscall.Write(fd, out); err != nil {
-			fmt.Fprintln(os.Stderr, "  échec d'écriture:", err)
+			fmt.Fprintln(os.Stderr, "  write failed:", err)
 			return nil, nil
 		}
 		var fs []frame
@@ -408,13 +415,13 @@ func exchange(fd int, cmd [2]byte, payload []byte, vendor [2]byte,
 			return fs, lastRaw
 		}
 		if verbose && try < retries {
-			fmt.Printf("  (essai %d sans réponse, nouvelle tentative)\n", try)
+			fmt.Printf("  (attempt %d got no reply, retrying)\n", try)
 		}
 	}
 	return nil, lastRaw
 }
 
-// scanChannels cherche les canaux RFCOMM qui acceptent une connexion.
+// scanChannels looks for RFCOMM channels that accept a connection.
 func scanChannels(addr [6]byte, max int, timeout time.Duration) []uint8 {
 	var found []uint8
 	for ch := 1; ch <= max; ch++ {
@@ -422,9 +429,9 @@ func scanChannels(addr [6]byte, max int, timeout time.Duration) []uint8 {
 		if err == nil {
 			found = append(found, uint8(ch))
 			syscall.Close(fd)
-			fmt.Printf("  canal %2d : ouvert\n", ch)
+			fmt.Printf("  channel %2d: open\n", ch)
 		} else if !errors.Is(err, syscall.ECONNREFUSED) {
-			fmt.Printf("  canal %2d : %v\n", ch, err)
+			fmt.Printf("  channel %2d: %v\n", ch, err)
 		}
 	}
 	return found
@@ -432,48 +439,48 @@ func scanChannels(addr [6]byte, max int, timeout time.Duration) []uint8 {
 
 func main() {
 	var (
-		addrStr    = flag.String("addr", "98:80:BB:40:D4:ED", "adresse MAC des écouteurs")
-		channel    = flag.Int("channel", 0, "canal RFCOMM (0 = découverte automatique)")
-		cmdStr     = flag.String("cmd", "0306", "commande(s) 2 octets hex, séparées par des virgules")
-		payloadStr = flag.String("payload", "", "payload hex (appliqué à toutes les commandes)")
-		eqVendor   = flag.Bool("eq-vendor", false, "utiliser le vendorId EQ 001D au lieu de 000A")
-		allowWrite = flag.Bool("allow-write", false, "autoriser les commandes hors liste blanche")
-		scan       = flag.Bool("scan", false, "seulement scanner les canaux RFCOMM")
-		maxChan    = flag.Int("max-channel", 30, "canal maximum exploré")
-		window     = flag.Duration("window", 1500*time.Millisecond, "fenêtre d'attente par essai")
-		retries    = flag.Int("retry", 3, "nombre d'essais par commande")
-		settle     = flag.Duration("settle", 600*time.Millisecond, "délai après connexion avant émission")
-		gap        = flag.Duration("gap", 250*time.Millisecond, "délai entre deux commandes")
-		connTO     = flag.Duration("connect-timeout", 10*time.Second, "timeout de connexion")
-		quiet      = flag.Bool("quiet", false, "sortie compacte (une ligne par commande)")
-		listen     = flag.Duration("listen", 0, "après les commandes, écouter les trames spontanées pendant cette durée")
+		addrStr    = flag.String("addr", "98:80:BB:40:D4:ED", "MAC address of the earbuds")
+		channel    = flag.Int("channel", 0, "RFCOMM channel (0 = auto-discovery)")
+		cmdStr     = flag.String("cmd", "0306", "2-byte hex command(s), comma separated")
+		payloadStr = flag.String("payload", "", "hex payload (applied to every command)")
+		eqVendor   = flag.Bool("eq-vendor", false, "use the EQ vendorId 001D instead of 000A")
+		allowWrite = flag.Bool("allow-write", false, "allow commands outside the allow-list")
+		scan       = flag.Bool("scan", false, "only scan the RFCOMM channels")
+		maxChan    = flag.Int("max-channel", 30, "highest channel explored")
+		window     = flag.Duration("window", 1500*time.Millisecond, "wait window per attempt")
+		retries    = flag.Int("retry", 3, "attempts per command")
+		settle     = flag.Duration("settle", 600*time.Millisecond, "delay after connecting before sending")
+		gap        = flag.Duration("gap", 250*time.Millisecond, "delay between two commands")
+		connTO     = flag.Duration("connect-timeout", 10*time.Second, "connection timeout")
+		quiet      = flag.Bool("quiet", false, "compact output (one line per command)")
+		listen     = flag.Duration("listen", 0, "after the commands, listen for spontaneous frames for this long")
 	)
 	flag.Parse()
 
 	addr, err := parseMAC(*addrStr)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "erreur:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
 	}
 
-	// --- Découverte du canal ---
+	// --- Channel discovery ---
 	ch := uint8(*channel)
 	if *scan || ch == 0 {
-		fmt.Printf("Découverte des canaux RFCOMM sur %s (1..%d)…\n", *addrStr, *maxChan)
+		fmt.Printf("Discovering RFCOMM channels on %s (1..%d)...\n", *addrStr, *maxChan)
 		found := scanChannels(addr, *maxChan, *connTO)
 		if len(found) == 0 {
-			fmt.Fprintln(os.Stderr, "\nAucun canal RFCOMM ouvert.")
-			fmt.Fprintln(os.Stderr, "Les écouteurs sont-ils allumés et hors de l'étui ?")
+			fmt.Fprintln(os.Stderr, "\nNo open RFCOMM channel.")
+			fmt.Fprintln(os.Stderr, "Are the earbuds powered on and out of their case?")
 			os.Exit(1)
 		}
-		fmt.Printf("Canaux ouverts : %v\n", found)
+		fmt.Printf("Open channels: %v\n", found)
 		if *scan {
 			return
 		}
 		ch = found[0]
 	}
 
-	// --- Commandes + garde-fou lecture seule ---
+	// --- Commands + read-only guard ---
 	var cmds [][2]byte
 	var labels []string
 	for _, s := range strings.Split(*cmdStr, ",") {
@@ -483,25 +490,25 @@ func main() {
 		}
 		c, err := parseCmd(s)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "erreur:", err)
+			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(2)
 		}
 		label, known := readOnlyCmds[c]
 		if !known {
 			if !*allowWrite {
 				fmt.Fprintf(os.Stderr,
-					"Refus : %02X%02X n'est pas une commande de lecture connue.\n"+
-						"Cette sonde est en lecture seule. Utiliser -allow-write pour forcer.\n",
+					"Refused: %02X%02X is not a known read command.\n"+
+						"This probe is read-only. Pass -allow-write to force it.\n",
 					c[0], c[1])
 				os.Exit(2)
 			}
-			label = "hors liste blanche"
+			label = "outside the allow-list"
 		}
 		cmds = append(cmds, c)
 		labels = append(labels, label)
 	}
 	if len(cmds) == 0 {
-		fmt.Fprintln(os.Stderr, "aucune commande à envoyer")
+		fmt.Fprintln(os.Stderr, "no command to send")
 		os.Exit(2)
 	}
 
@@ -509,7 +516,7 @@ func main() {
 	if *payloadStr != "" {
 		payload, err = hex.DecodeString(strings.ReplaceAll(*payloadStr, " ", ""))
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "payload hex invalide:", err)
+			fmt.Fprintln(os.Stderr, "invalid hex payload:", err)
 			os.Exit(2)
 		}
 	}
@@ -519,22 +526,22 @@ func main() {
 		vendor = vendorEQ
 	}
 
-	// --- Connexion (une seule, réutilisée) ---
+	// --- Connection (a single one, reused) ---
 	fd, err := connectRFCOMM(addr, ch, *connTO)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "échec de connexion:", err)
+		fmt.Fprintln(os.Stderr, "connection failed:", err)
 		os.Exit(1)
 	}
 	defer syscall.Close(fd)
-	fmt.Printf("Connecté sur le canal %d.\n", ch)
+	fmt.Printf("Connected on channel %d.\n", ch)
 
 	tv := syscall.NsecToTimeval(int64(300 * time.Millisecond))
 	if err := syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv); err != nil {
-		fmt.Fprintln(os.Stderr, "avertissement: SO_RCVTIMEO non appliqué:", err)
+		fmt.Fprintln(os.Stderr, "warning: SO_RCVTIMEO not applied:", err)
 	}
 
-	// Laisser le lien se stabiliser : sans ce délai les premières commandes
-	// restent fréquemment sans réponse.
+	// Let the link settle: without this delay the first commands frequently
+	// get no reply.
 	time.Sleep(*settle)
 
 	ok := 0
@@ -546,11 +553,11 @@ func main() {
 			fmt.Printf("\n=== %02X%02X — %s ===\n", c[0], c[1], labels[i])
 		}
 
-		// Les écritures ne sont JAMAIS réessayées : plusieurs commandes de type
-		// `set` prennent effet sans acquitter (mode ANC, multipoint). Un retry
-		// rejouerait l'effet de bord — observé sur le H3 avec trois invites
-		// vocales « passthrough » pour une seule écriture voulue.
-		// Pour vérifier qu'un `set` a pris, relire l'état, ne pas renvoyer.
+		// Writes are NEVER retried: several `set` commands take effect
+		// without acknowledging (ANC mode, multipoint). A retry would replay
+		// the side effect — observed on the H3 as three "passthrough" voice
+		// prompts for a single intended write.
+		// To check a `set` landed, read the state back, do not resend.
 		tries := *retries
 		if _, isRead := readOnlyCmds[c]; !isRead {
 			tries = 1
@@ -559,11 +566,11 @@ func main() {
 
 		if len(frames) == 0 {
 			if *quiet {
-				fmt.Printf("%02X%02X  %-28s  SANS RÉPONSE\n", c[0], c[1], labels[i])
+				fmt.Printf("%02X%02X  %-28s  NO REPLY\n", c[0], c[1], labels[i])
 			} else {
-				fmt.Printf("  SANS RÉPONSE après %d essais\n", *retries)
+				fmt.Printf("  NO REPLY after %d attempts\n", *retries)
 				if len(raw) > 0 {
-					fmt.Printf("  octets non décodés : %s\n",
+					fmt.Printf("  undecoded bytes: %s\n",
 						strings.ToUpper(hex.EncodeToString(raw)))
 				}
 			}
@@ -582,18 +589,18 @@ func main() {
 				}
 				if f.SOF != sof ||
 					(f.Version != versionRequest && f.Version != versionResponse) {
-					fmt.Printf("    ⚠ en-tête inattendu (sof=%02X version=%02X)\n",
+					fmt.Printf("    ! unexpected header (sof=%02X version=%02X)\n",
 						f.SOF, f.Version)
 				}
 			}
 		}
 	}
 
-	fmt.Printf("\n--- %d/%d commande(s) avec réponse ---\n", ok, len(cmds))
+	fmt.Printf("\n--- %d/%d command(s) answered ---\n", ok, len(cmds))
 
 	if *listen > 0 {
-		fmt.Printf("\n=== écoute des trames spontanées pendant %s ===\n", *listen)
-		fmt.Println("(touchez les écouteurs maintenant)")
+		fmt.Printf("\n=== listening for spontaneous frames for %s ===\n", *listen)
+		fmt.Println("(tap the earbuds now)")
 		var acc []byte
 		buf := make([]byte, 1024)
 		deadline := time.Now().Add(*listen)
@@ -606,11 +613,11 @@ func main() {
 					errors.Is(err, syscall.EINTR) {
 					continue
 				}
-				fmt.Fprintln(os.Stderr, "lecture:", err)
+				fmt.Fprintln(os.Stderr, "read:", err)
 				break
 			}
 			if r == 0 {
-				fmt.Fprintln(os.Stderr, "connexion fermée par le périphérique")
+				fmt.Fprintln(os.Stderr, "connection closed by the device")
 				break
 			}
 			acc = append(acc, buf[:r]...)
@@ -624,9 +631,9 @@ func main() {
 				}
 			}
 		}
-		fmt.Printf("\n--- %d trame(s) spontanée(s) ---\n", n)
+		fmt.Printf("\n--- %d spontaneous frame(s) ---\n", n)
 		if n == 0 {
-			fmt.Println("Aucune trame : les écouteurs ne rapportent pas les appuis sur ce canal.")
+			fmt.Println("No frames: the earbuds do not report taps on this channel.")
 		}
 		return
 	}

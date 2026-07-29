@@ -8,90 +8,91 @@ import (
 	"time"
 )
 
-// Le protocole PeatsAudio circule sur RFCOMM (Bluetooth Classic, profil SPP).
-// Chaque système expose ce transport via une API différente ; seule cette
-// couche change d'une plateforme à l'autre.
+// The PeatsAudio protocol runs over RFCOMM (Bluetooth Classic, SPP profile).
+// Every OS exposes that transport through a different API; this layer is the
+// only part that changes from one platform to the next.
 //
 //	Linux   AF_BLUETOOTH / BTPROTO_RFCOMM   (transport_linux.go)
 //	Windows AF_BTH / BTHPROTO_RFCOMM        (transport_windows.go)
 //	macOS   IOBluetooth                     (transport_darwin.go)
 //
-// iOS est hors d'atteinte : le profil SPP y est réservé aux accessoires
-// certifiés MFi, ce que ces écouteurs ne sont pas.
+// iOS is out of reach: SPP there is reserved for MFi-certified accessories,
+// which these earbuds are not.
 
-// rfcommConn est une connexion RFCOMM établie.
+// rfcommConn is an established RFCOMM connection.
 type rfcommConn interface {
 	Read(p []byte) (int, error)
 	Write(p []byte) (int, error)
-	// SetReadTimeout borne l'attente d'un Read. Un dépassement doit renvoyer
-	// une erreur satisfaisant isTimeout.
+	// SetReadTimeout bounds how long a Read waits. Expiry must return an
+	// error satisfying isTimeout.
 	SetReadTimeout(d time.Duration) error
 	Close() error
 }
 
-// dialRFCOMM ouvre une connexion vers addr sur le canal donné.
-// Implémenté par fichier selon la plateforme.
+// dialRFCOMM opens a connection to addr on the given channel.
+// Implemented once per platform, in its own file.
 //
-// Doit renvoyer une erreur satisfaisant errors.Is(err, ErrBusy) quand le canal
-// est déjà tenu par un autre appareil, et errors.Is(err, ErrRefused) quand
-// aucun service n'écoute sur ce canal.
+// It must return an error satisfying errors.Is(err, ErrBusy) when the channel
+// is already held by another device, and errors.Is(err, ErrRefused) when no
+// service listens on that channel.
 var dialRFCOMM func(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn, error)
 
-// maxChannel borne le balayage de découverte. Les canaux RFCOMM vont de 1 à 30.
+// maxChannel bounds the discovery sweep. RFCOMM channels run from 1 to 30.
 const maxChannel = 30
 
 var (
-	// ErrBusy : le canal de contrôle est monopolisé par un autre appareil.
-	// Typiquement multipoint actif avec un téléphone connecté.
-	ErrBusy = errors.New("canal de contrôle occupé par un autre appareil")
+	// ErrBusy: the control channel is monopolised by another device.
+	// Typically multipoint enabled with a phone connected.
+	ErrBusy = errors.New("control channel held by another device")
 
-	// ErrRefused : aucun service n'écoute sur ce canal.
-	ErrRefused = errors.New("canal refusé")
+	// ErrRefused: no service listens on that channel.
+	ErrRefused = errors.New("channel refused")
 
-	// ErrUnreachable : l'appareil est appairé mais injoignable — éteint, dans
-	// son étui, ou hors de portée. Distinct d'ErrRefused : ce n'est pas le
-	// canal qui est fermé, c'est l'appareil qui n'est pas là. Aucun canal ne
-	// répondra, le balayage est donc inutile.
-	ErrUnreachable = errors.New("écouteurs injoignables")
+	// ErrUnreachable: the device is paired but unreachable — off, in its
+	// case, or out of range. Distinct from ErrRefused: the channel is not
+	// closed, the device simply is not there. No channel will answer, so
+	// sweeping is pointless.
+	ErrUnreachable = errors.New("earbuds unreachable")
 
-	// ErrNoChannel : aucun canal RFCOMM ouvert.
-	ErrNoChannel = errors.New("aucun canal RFCOMM disponible")
+	// ErrNoChannel: no RFCOMM channel is open.
+	ErrNoChannel = errors.New("no RFCOMM channel available")
 
-	ErrTimeout      = errors.New("pas de réponse des écouteurs")
-	ErrNotConnected = errors.New("non connecté")
+	ErrTimeout      = errors.New("no reply from the earbuds")
+	ErrNotConnected = errors.New("not connected")
 
-	// ErrUnsupported : plateforme sans transport RFCOMM implémenté.
-	ErrUnsupported = errors.New("transport RFCOMM non disponible sur cette plateforme")
+	// ErrUnsupported: platform with no RFCOMM transport implemented.
+	ErrUnsupported = errors.New("RFCOMM transport unavailable on this platform")
 )
 
-// ParseMAC convertit "98:80:BB:40:D4:ED" en tableau d'octets, du plus
-// significatif au moins significatif.
+// ParseMAC turns "98:80:BB:40:D4:ED" into a byte array, most significant byte
+// first.
 //
-// Attention : les API de chaque plateforme attendent un ordre différent.
-// Linux veut l'ordre inverse (little-endian), Windows un entier 64 bits.
-// La conversion est faite dans chaque transport, pas ici.
+// Careful: each platform API expects a different order. Linux wants it
+// reversed (little-endian), Windows wants a 64-bit integer. That conversion
+// belongs to each transport, not here.
 func ParseMAC(s string) ([6]byte, error) {
 	var out [6]byte
 	parts := strings.Split(strings.TrimSpace(s), ":")
 	if len(parts) != 6 {
-		return out, fmt.Errorf("adresse MAC invalide: %q", s)
+		return out, fmt.Errorf("invalid MAC address: %q", s)
 	}
 	for i, p := range parts {
 		v, err := strconv.ParseUint(p, 16, 8)
 		if err != nil {
-			return out, fmt.Errorf("octet MAC invalide %q: %w", p, err)
+			return out, fmt.Errorf("invalid MAC byte %q: %w", p, err)
 		}
 		out[i] = byte(v)
 	}
 	return out, nil
 }
 
-// dialAny balaie les canaux RFCOMM et renvoie la PREMIÈRE connexion établie.
+// dialAny sweeps the RFCOMM channels and returns the FIRST connection it
+// establishes.
 //
-// sdptool ne renvoie rien d'exploitable sur ces écouteurs, d'où le balayage.
-// La connexion est délibérément conservée plutôt que refermée puis rouverte :
-// les écouteurs refusent une reconnexion immédiate sur le même canal tant que
-// la session RFCOMM précédente n'est pas démontée.
+// sdptool returns nothing usable on these earbuds, hence the sweep. The
+// connection is deliberately kept rather than closed and reopened: the earbuds
+// refuse an immediate reconnection on the same channel until the previous
+// RFCOMM session is torn down.
 func dialAny(addr [6]byte) (rfcommConn, uint8, error) {
 	if dialRFCOMM == nil {
 		return nil, 0, ErrUnsupported
@@ -102,9 +103,9 @@ func dialAny(addr [6]byte) (rfcommConn, uint8, error) {
 		if err == nil {
 			return c, ch, nil
 		}
-		// L'appareil lui-même est absent : les 29 canaux restants échoueront
-		// de la même façon. On remonte la cause réelle au lieu de la diluer
-		// en « aucun canal disponible ».
+		// The device itself is absent: the 29 remaining channels will fail
+		// the same way. Report the real cause instead of diluting it into
+		// "no channel available".
 		if errors.Is(err, ErrUnreachable) {
 			return nil, 0, err
 		}

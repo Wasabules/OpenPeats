@@ -5,6 +5,8 @@
   import Segmented from "./lib/Segmented.svelte";
   import EQEditor from "./lib/EQEditor.svelte";
   import TouchPanel from "./lib/TouchPanel.svelte";
+  import { get } from "svelte/store";
+  import { LOCALES, locale, setLocale, t } from "./lib/i18n.js";
 
   import {
     Connect, Disconnect, Refresh, GetState,
@@ -14,6 +16,7 @@
     SetMultipoint, SetLDAC,
     SetKeyMappings,
     SetBatteryAlert, SetBatteryThreshold, TestBatteryNotification,
+    SetLanguage,
     ApplyEQ, SendRaw,
   } from "../wailsjs/go/main/App";
   import { EventsOn } from "../wailsjs/runtime/runtime";
@@ -28,6 +31,7 @@
     promptVolume: 0, voicePack: 0,
     keyMappings: [], supported: {},
     batteryAlert: true, batteryThresh: 20,
+    language: "en",
   };
 
   let mac = "98:80:BB:40:D4:ED";
@@ -35,32 +39,39 @@
   let busy = false;
   let logs = [];
   let frames = [];
-  let connError = "";
+  /** Message from Go: { key, args }. Empty key means no error. */
+  let connError = null;
   let alert = null;
 
   let rawCmd = "0306";
   let rawPayload = "";
 
   const TABS = [
-    { id: "audio", label: "Audio" },
-    { id: "general", label: "Général" },
-    { id: "touch", label: "Tactile" },
-    { id: "eq", label: "Égaliseur" },
-    { id: "advanced", label: "Avancé" },
+    { id: "audio", key: "tab.audio" },
+    { id: "general", key: "tab.general" },
+    { id: "touch", key: "tab.touch" },
+    { id: "eq", key: "tab.eq" },
+    { id: "advanced", key: "tab.advanced" },
   ];
 
+  // Wire values paired with their catalogue key. The numbers are protocol
+  // constants; only the label is translated.
   const ANC_MODES = [
-    { value: 0, label: "Arrêt" },
-    { value: 1, label: "Réduction de bruit" },
-    { value: 2, label: "Transparence" },
+    { value: 0, key: "anc.off" },
+    { value: 1, key: "anc.on" },
+    { value: 2, key: "anc.transparency" },
   ];
 
-  const ANC_LEVEL_LABELS = {
-    0x11: "Adaptative", 0x12: "Intérieur",
-    0x13: "Extérieur", 0x14: "Trafic",
+  const ANC_LEVEL_KEYS = {
+    0x11: "ancLevel.adaptive", 0x12: "ancLevel.indoor",
+    0x13: "ancLevel.outdoor", 0x14: "ancLevel.traffic",
   };
-  const TRANSPARENCY_LABELS = { 0x01: "Voix renforcée", 0x02: "Standard" };
+  const TRANSPARENCY_KEYS = {
+    0x01: "transparency.voice", 0x02: "transparency.standard",
+  };
 
+  // Voice prompt languages are endonyms: they read the same whatever the
+  // interface language is, so they stay out of the catalogue.
   const VOICE_PACKS = [
     { value: 0, label: "English" }, { value: 1, label: "中文" },
     { value: 2, label: "Deutsch" }, { value: 3, label: "日本語" },
@@ -68,23 +79,58 @@
     { value: 6, label: "Italiano" },
   ];
 
+  // Keep the Go side on the same language: desktop notifications must never
+  // arrive in a different language from the window that triggered them.
+  //
+  // Guarded rather than fire-and-forget: this runs during component setup,
+  // and the Wails bindings throw synchronously if window.go is not injected
+  // yet. An uncaught error there would leave a blank window — a far worse
+  // outcome than notifications staying in the previous language.
+  $: syncBackendLanguage($locale);
+
+  function syncBackendLanguage(code) {
+    try {
+      SetLanguage(code)?.catch(() => {});
+    } catch {
+      // Bindings not ready. onMount below reapplies the language once they
+      // are, so this only ever loses the very first attempt.
+    }
+  }
+
   $: sup = state.supported || {};
+  $: ancModeOptions = ANC_MODES.map((m) => ({ value: m.value, label: $t(m.key) }));
   $: ancLevelOptions = (state.ancLevels || []).map((p) => ({
     value: p.code,
-    label: ANC_LEVEL_LABELS[p.code] || `0x${p.code.toString(16)}`,
+    label: ANC_LEVEL_KEYS[p.code]
+      ? $t(ANC_LEVEL_KEYS[p.code])
+      : `0x${p.code.toString(16)}`,
   }));
   $: transparencyOptions = (state.transparencyLevels || []).map((p) => ({
     value: p.code,
-    label: TRANSPARENCY_LABELS[p.code] || `0x${p.code.toString(16)}`,
+    label: TRANSPARENCY_KEYS[p.code]
+      ? $t(TRANSPARENCY_KEYS[p.code])
+      : `0x${p.code.toString(16)}`,
   }));
 
   $: ancLevelRelevant = state.ancMode === 1;
   $: transparencyRelevant = state.ancMode === 2;
 
+  // Battery readings, paired with their label key so the status bar and the
+  // low-battery banner name the same thing the same way.
+  $: batteries = [
+    { key: "battery.left", value: state.batteryLeft },
+    { key: "battery.right", value: state.batteryRight },
+    { key: "battery.case", value: state.batteryCase },
+  ];
+
+  const stamp = () => new Date().toLocaleTimeString($locale);
+
   onMount(async () => {
     EventsOn("state", (s) => { state = s; if (s.mac) mac = s.mac; });
-    EventsOn("log", (line) => {
-      logs = [...logs.slice(-260), { ts: new Date().toLocaleTimeString(), line }];
+    // Go sends { key, args } rather than text: the line is translated at
+    // render time, so switching language re-renders the whole log.
+    EventsOn("log", (message) => {
+      logs = [...logs.slice(-260), { ts: stamp(), message }];
     });
     EventsOn("frame", (f) => { frames = [...frames.slice(-160), f]; });
     EventsOn("alert", (a) => {
@@ -95,6 +141,10 @@
     const s = await GetState();
     state = s;
     if (s.mac) mac = s.mac;
+
+    // The bindings are certainly up by now; reapply in case the reactive
+    // statement above ran before they were injected.
+    syncBackendLanguage(get(locale));
   });
 
   async function run(fn) {
@@ -112,7 +162,7 @@
 
   const sendRaw = () => run(async () => {
     const err = await SendRaw(rawCmd, rawPayload, false);
-    if (err) logs = [...logs, { ts: new Date().toLocaleTimeString(), line: err }];
+    if (err && err.key) logs = [...logs, { ts: stamp(), message: err }];
   });
 
   function battClass(v) {
@@ -126,18 +176,25 @@
   <div class="brand">
     <span class="dot" class:on={state.connected} />
     <strong>PeatsAudio</strong>
-    <span class="faint">contrôle SoundPEATS sous Linux</span>
+    <span class="faint">{$t("app.tagline")}</span>
   </div>
 
   <div class="conn">
+    <select class="lang" value={$locale} aria-label={$t("field.uiLanguage")}
+            on:change={(e) => setLocale(e.currentTarget.value)}>
+      {#each LOCALES as l}
+        <option value={l.code}>{l.label}</option>
+      {/each}
+    </select>
+
     <input type="text" bind:value={mac} spellcheck="false"
-           disabled={busy || state.connected} aria-label="Adresse MAC" />
+           disabled={busy || state.connected} aria-label={$t("field.macAddress")} />
     {#if state.connected}
-      <button on:click={doRefresh} disabled={busy}>Rafraîchir</button>
-      <button on:click={doDisconnect} disabled={busy}>Déconnecter</button>
+      <button on:click={doRefresh} disabled={busy}>{$t("action.refresh")}</button>
+      <button on:click={doDisconnect} disabled={busy}>{$t("action.disconnect")}</button>
     {:else}
       <button class="primary" on:click={doConnect} disabled={busy}>
-        {busy ? "…" : "Connecter"}
+        {busy ? $t("action.working") : $t("action.connect")}
       </button>
     {/if}
   </div>
@@ -145,83 +202,85 @@
 
 {#if alert}
   <div class="alert">
-    <strong>Batterie faible</strong> — {alert.label} à {alert.pct} %.
-    <button class="close" on:click={() => (alert = null)} aria-label="Fermer">✕</button>
+    <strong>{$t("alert.lowBattery.title")}</strong> —
+    {$t("alert.lowBattery.body", { label: $t(alert.labelKey), percent: alert.percent })}
+    <button class="close" on:click={() => (alert = null)}
+            aria-label={$t("action.dismiss")}>✕</button>
   </div>
 {/if}
 
-{#if connError && !state.connected}
-  <div class="err">{connError}</div>
+{#if connError && connError.key && !state.connected}
+  <div class="err">{$t(connError)}</div>
 {/if}
 
 {#if state.connected}
   <div class="statusbar">
     <div class="batts">
-      {#each [["Gauche", state.batteryLeft], ["Droite", state.batteryRight], ["Étui", state.batteryCase]] as [label, v]}
+      {#each batteries as b}
         <div class="batt">
-          <span class="faint">{label}</span>
-          <div class="bar"><div class="fill {battClass(v)}" style="width:{v}%" /></div>
-          <span class="pct">{v}%</span>
+          <span class="faint">{$t(b.key)}</span>
+          <div class="bar">
+            <div class="fill {battClass(b.value)}" style="width:{b.value}%" />
+          </div>
+          <span class="pct">{b.value}%</span>
         </div>
       {/each}
     </div>
     <div class="meta faint mono">
-      {state.firmware || "firmware ?"} · canal RFCOMM {state.channel}
+      {state.firmware || $t("status.firmwareUnknown")} ·
+      {$t("status.channel", { channel: state.channel })}
     </div>
   </div>
 {/if}
 
 <nav class="tabs">
-  {#each TABS as t}
-    <button class:active={tab === t.id} on:click={() => (tab = t.id)}>{t.label}</button>
+  {#each TABS as item}
+    <button class:active={tab === item.id} on:click={() => (tab = item.id)}>
+      {$t(item.key)}
+    </button>
   {/each}
 </nav>
 
 <main class="scroll">
   {#if !state.connected}
     <div class="empty-state">
-      <h2>Écouteurs non connectés</h2>
-      <p class="dim">
-        Sortez les écouteurs de l'étui, puis connectez-vous. Si le multipoint est
-        actif et que votre téléphone tient le canal de contrôle, coupez-y le
-        Bluetooth au préalable.
-      </p>
+      <h2>{$t("empty.title")}</h2>
+      <p class="dim">{$t("empty.body")}</p>
     </div>
 
   {:else if tab === "audio"}
     <div class="grid">
-      <Card title="Réduction de bruit"
-            hint="Le sous-mode ne s'applique qu'en réduction de bruit active.">
-        <Segmented options={ANC_MODES} value={state.ancMode} disabled={busy}
+      <Card title={$t("card.anc.title")} hint={$t("card.anc.hint")}>
+        <Segmented options={ancModeOptions} value={state.ancMode} disabled={busy}
                    on:change={(e) => run(() => SetANCMode(e.detail))} />
       </Card>
 
-      <Card title="Sous-mode de réduction"
+      <Card title={$t("card.ancLevel.title")}
             unsupported={sup.ancLevel === false}
-            hint={ancLevelRelevant ? "" : "Passez en réduction de bruit pour agir sur ce réglage."}>
+            hint={ancLevelRelevant ? "" : $t("card.ancLevel.hint")}>
         <Segmented options={ancLevelOptions} value={state.ancLevel}
                    disabled={busy || !ancLevelRelevant}
                    on:change={(e) => run(() => SetANCLevel(e.detail))} />
       </Card>
 
-      <Card title="Niveau de transparence"
+      <Card title={$t("card.transparency.title")}
             unsupported={sup.transparencyLevel === false}
-            hint={transparencyRelevant ? "" : "Passez en transparence pour agir sur ce réglage."}>
+            hint={transparencyRelevant ? "" : $t("card.transparency.hint")}>
         <Segmented options={transparencyOptions} value={state.transparencyLevel}
                    disabled={busy || !transparencyRelevant}
                    on:change={(e) => run(() => SetTransparencyLevel(e.detail))} />
       </Card>
 
-      <Card title="Codec et connectivité"
-            hint="LDAC et multipoint sont exclusifs : le firmware coupe LDAC dès que le multipoint s'active, faute de bande passante pour deux liens.">
-        <Toggle label="LDAC" checked={state.ldac} disabled={busy || sup.ldac === false}
-                note="Qualité maximale, un seul appareil à la fois."
+      <Card title={$t("card.codec.title")} hint={$t("card.codec.hint")}>
+        <Toggle label={$t("toggle.ldac.label")} checked={state.ldac}
+                disabled={busy || sup.ldac === false}
+                note={$t("toggle.ldac.note")}
                 on:change={(e) => run(() => SetLDAC(e.detail))} />
-        <Toggle label="Multipoint (double appareil)" checked={state.multipoint}
+        <Toggle label={$t("toggle.multipoint.label")} checked={state.multipoint}
                 disabled={busy || sup.multipoint === false}
-                note="PC et téléphone simultanément, en aptX."
+                note={$t("toggle.multipoint.note")}
                 on:change={(e) => run(() => SetMultipoint(e.detail))} />
-        <Toggle label="LE Audio" checked={state.leAudio}
+        <Toggle label={$t("toggle.leAudio.label")} checked={state.leAudio}
                 disabled={busy || sup.leAudio === false}
                 on:change={(e) => run(() => SetLEAudio(e.detail))} />
       </Card>
@@ -229,39 +288,40 @@
 
   {:else if tab === "general"}
     <div class="grid">
-      <Card title="Modes">
-        <Toggle label="Mode jeu" checked={state.gameMode}
+      <Card title={$t("card.modes.title")}>
+        <Toggle label={$t("toggle.gameMode.label")} checked={state.gameMode}
                 disabled={busy || sup.gameMode === false}
-                note="Réduit la latence audio."
+                note={$t("toggle.gameMode.note")}
                 on:change={(e) => run(() => SetGameMode(e.detail))} />
-        <Toggle label="Désactiver les commandes tactiles"
+        <Toggle label={$t("toggle.touchDisabled.label")}
                 checked={state.touchDisabled}
                 disabled={busy || sup.touchDisabled === false}
-                note="Ignore tous les appuis sur les écouteurs."
+                note={$t("toggle.touchDisabled.note")}
                 on:change={(e) => run(() => SetTouchDisabled(e.detail))} />
       </Card>
 
-      <Card title="Alerte de batterie faible"
-            hint="Les niveaux sont relus toutes les 90 secondes. Une notification de bureau est envoyée au franchissement du seuil, une seule fois par décharge.">
-        <Toggle label="Notifications système" checked={state.batteryAlert}
-                disabled={busy}
+      <Card title={$t("card.batteryAlert.title")} hint={$t("card.batteryAlert.hint")}>
+        <Toggle label={$t("toggle.systemNotifications.label")}
+                checked={state.batteryAlert} disabled={busy}
                 on:change={(e) => run(() => SetBatteryAlert(e.detail))} />
         <div class="field" style="margin-top:10px">
-          <span class="faint">Seuil d'alerte — {state.batteryThresh} %</span>
+          <span class="faint">
+            {$t("field.alertThreshold", { value: state.batteryThresh })}
+          </span>
           <input type="range" min="5" max="50" step="5"
                  value={state.batteryThresh} disabled={busy}
                  on:change={(e) => run(() => SetBatteryThreshold(Number(e.currentTarget.value)))} />
         </div>
         <div style="margin-top:12px; display:flex; justify-content:flex-end">
           <button on:click={() => TestBatteryNotification()} disabled={busy}>
-            Tester la notification
+            {$t("action.testNotification")}
           </button>
         </div>
       </Card>
 
-      <Card title="Invites vocales" unsupported={sup.voicePack === false}>
+      <Card title={$t("card.voicePrompts.title")} unsupported={sup.voicePack === false}>
         <div class="field">
-          <span class="faint">Langue</span>
+          <span class="faint">{$t("field.language")}</span>
           <select value={state.voicePack} disabled={busy}
                   on:change={(e) => run(() => SetVoicePack(Number(e.currentTarget.value)))}>
             {#each VOICE_PACKS as v}
@@ -270,20 +330,21 @@
           </select>
         </div>
         <div class="field" style="margin-top:12px">
-          <span class="faint">Volume des invites — {state.promptVolume}</span>
+          <span class="faint">
+            {$t("field.promptVolume", { value: state.promptVolume })}
+          </span>
           <input type="range" min="0" max="100" step="1"
                  value={state.promptVolume} disabled={busy || sup.promptVolume === false}
                  on:change={(e) => run(() => SetPromptVolume(Number(e.currentTarget.value)))} />
         </div>
       </Card>
 
-      <Card title="Fonctions absentes de ce modèle"
-            hint="Détectées au rafraîchissement : ces commandes ne répondent pas sur vos écouteurs.">
+      <Card title={$t("card.missing.title")} hint={$t("card.missing.hint")}>
         <div class="chips">
           {#each Object.entries(sup).filter(([, v]) => v === false) as [k]}
             <span class="chip">{k}</span>
           {:else}
-            <span class="faint">Toutes les fonctions interrogées répondent.</span>
+            <span class="faint">{$t("card.missing.none")}</span>
           {/each}
         </div>
       </Card>
@@ -291,40 +352,37 @@
 
   {:else if tab === "touch"}
     <div class="single">
-      <Card title="Commandes tactiles" unverified
+      <Card title={$t("card.touch.title")} unverified
             unsupported={sup.keyMappings === false}
-            hint="Le mode démo de l'app Android a été testé ici : la commande est acquittée mais les appuis ne remontent jamais et continuent d'agir normalement. Le tactile est géré en local par le firmware — le moniteur live a donc été retiré.">
+            hint={$t("card.touch.hint")}>
         <TouchPanel mappings={state.keyMappings} {busy} on:apply={onApplyKeys} />
       </Card>
     </div>
 
   {:else if tab === "eq"}
     <div class="single wide">
-      <Card title="Égaliseur paramétrique"
-            hint="Filtres peaking : réglez le gain au fader ou en faisant glisser un point de la courbe, et la largeur de bande avec le Q au-dessus de chaque fader.">
+      <Card title={$t("card.eq.title")} hint={$t("card.eq.hint")}>
         <EQEditor {busy} on:apply={onApplyEQ} />
       </Card>
     </div>
 
   {:else if tab === "advanced"}
     <div class="single">
-      <Card title="Trame manuelle"
-            hint="Envoie une commande arbitraire. Aucune réémission : une commande inconnue peut avoir un effet de bord irréversible.">
+      <Card title={$t("card.raw.title")} hint={$t("card.raw.hint")}>
         <div class="raw">
           <label>
-            <span class="faint">Commande (2 octets hex)</span>
+            <span class="faint">{$t("field.rawCommand")}</span>
             <input type="text" bind:value={rawCmd} placeholder="0306" spellcheck="false" />
           </label>
           <label>
-            <span class="faint">Payload (hex, optionnel)</span>
+            <span class="faint">{$t("field.rawPayload")}</span>
             <input type="text" bind:value={rawPayload} placeholder="01" spellcheck="false" />
           </label>
-          <button on:click={sendRaw} disabled={busy}>Envoyer</button>
+          <button on:click={sendRaw} disabled={busy}>{$t("action.send")}</button>
         </div>
       </Card>
 
-      <Card title="Trames reçues"
-            hint="Toutes les trames remontées par les écouteurs, y compris spontanées.">
+      <Card title={$t("card.frames.title")} hint={$t("card.frames.hint")}>
         <div class="logs scroll">
           {#each frames.slice().reverse() as f}
             <div class="frameline">
@@ -333,20 +391,20 @@
               <span class="mono dim">{f.payload || "—"}</span>
             </div>
           {:else}
-            <span class="faint">Aucune trame.</span>
+            <span class="faint">{$t("card.frames.empty")}</span>
           {/each}
         </div>
       </Card>
 
-      <Card title="Journal">
+      <Card title={$t("card.log.title")}>
         <div class="logs scroll">
           {#each logs.slice().reverse() as l}
             <div class="logline">
               <span class="faint mono">{l.ts}</span>
-              <span>{l.line}</span>
+              <span>{$t(l.message)}</span>
             </div>
           {:else}
-            <span class="faint">Aucune entrée.</span>
+            <span class="faint">{$t("card.log.empty")}</span>
           {/each}
         </div>
       </Card>
@@ -370,6 +428,9 @@
 
   .conn { display: flex; gap: 8px; align-items: center; }
   .conn input { width: 172px; font-family: ui-monospace, monospace; font-size: 0.83rem; }
+  /* Kept narrow: the language picker sits next to the connection controls
+     without competing with them for attention. */
+  .conn .lang { width: auto; padding: 6px 8px; font-size: 0.82rem; }
 
   .alert {
     margin: 12px 20px 0; padding: 10px 14px;

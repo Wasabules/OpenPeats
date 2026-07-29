@@ -13,12 +13,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Transport RFCOMM sous Windows : sockets Winsock AF_BTH.
+// RFCOMM transport on Windows: Winsock AF_BTH sockets.
 //
-// ⚠ NON TESTÉ. Écrit d'après la documentation Winsock Bluetooth de Microsoft,
-// en miroir du transport Linux qui, lui, est validé sur matériel réel.
-// Les écarts probables portent sur la gestion des délais et sur les codes
-// d'erreur renvoyés par la pile Bluetooth de Windows.
+// Validated on hardware (Windows 11, SOUNDPEATS H3): connection, reads and
+// writes all confirmed. Getting there took two bugs that came straight from
+// mirroring the Linux transport — a naturally aligned struct instead of a
+// packed one, and a select() without exceptfds. Both are documented below,
+// because both fail silently and look like an absent device.
 
 const (
 	afBTH          = 32
@@ -26,22 +27,22 @@ const (
 
 	fionbio = 0x8004667E
 
-	// x/sys/windows n'expose pas SO_ERROR ; valeur de <winsock2.h>.
+	// x/sys/windows does not export SO_ERROR; value taken from <winsock2.h>.
 	soError = 0x1007
 
 	wsaEWOULDBLOCK  = windows.Errno(10035)
 	wsaETIMEDOUT    = windows.Errno(10060)
 	wsaECONNREFUSED = windows.Errno(10061)
 
-	// WSAEADDRNOTAVAIL : l'appareil est appairé mais pas connecté — étui,
-	// éteint, hors de portée. Arrive de façon synchrone, sur tous les canaux.
+	// WSAEADDRNOTAVAIL: the device is paired but not connected — in its case,
+	// powered off, out of range. Raised synchronously, on every channel.
 	wsaEADDRNOTAVAIL = windows.Errno(10049)
 	wsaEHOSTUNREACH  = windows.Errno(10065)
 
-	// WSAEHOSTDOWN désigne ici un canal fermé, pas un appareil absent :
-	// mesuré sur un H3 joignable, où les canaux 1 et 12 renvoient 10064
-	// pendant que le canal 11 accepte la connexion. Le traiter comme
-	// « injoignable » ferait avorter le balayage dès le premier canal.
+	// WSAEHOSTDOWN means a closed channel here, not an absent device:
+	// measured on a reachable H3, where channels 1 and 12 return 10064 while
+	// channel 11 accepts the connection. Treating it as "unreachable" would
+	// abort the sweep at the very first channel.
 	wsaEHOSTDOWN = windows.Errno(10064)
 )
 
@@ -56,34 +57,34 @@ var (
 
 func init() { dialRFCOMM = dialWindows }
 
-// sockaddrBTHLen est la taille de SOCKADDR_BTH : 30 octets, pas 40.
+// sockaddrBTHLen is the size of SOCKADDR_BTH: 30 bytes, not 40.
 //
-// ws2bth.h inclut <pshpack1.h> — la structure est packée sur 1 octet, sans
-// aucun remplissage. Une struct Go équivalente serait alignée naturellement et
-// placerait btAddr à l'offset 8 au lieu de 2 : Windows lirait alors l'adresse
-// au mauvais endroit et rejetterait tout connect par WSAEADDRNOTAVAIL (10049),
-// quel que soit le canal. Diagnostiqué sur un H3, où la version packée se
-// connecte du premier coup.
+// ws2bth.h includes <pshpack1.h> — the struct is packed to 1 byte, with no
+// padding at all. An equivalent Go struct would be naturally aligned and put
+// btAddr at offset 8 instead of 2: Windows would then read the address from
+// the wrong place and reject every connect with WSAEADDRNOTAVAIL (10049), on
+// every channel. Diagnosed on an H3, where the packed version connects first
+// try.
 const sockaddrBTHLen = 30
 
-// encodeSockaddrBTH sérialise SOCKADDR_BTH à la main, pour ne pas dépendre des
-// règles d'alignement du compilateur Go.
+// encodeSockaddrBTH serialises SOCKADDR_BTH by hand, so nothing depends on the
+// Go compiler's alignment rules.
 //
 //	offset 0  addressFamily  uint16
 //	offset 2  btAddr         uint64
-//	offset 10 serviceClassId GUID (16 octets)
+//	offset 10 serviceClassId GUID (16 bytes)
 //	offset 26 port           uint32
 func encodeSockaddrBTH(bt uint64, port uint32) [sockaddrBTHLen]byte {
 	var sa [sockaddrBTHLen]byte
 	binary.LittleEndian.PutUint16(sa[0:2], afBTH)
 	binary.LittleEndian.PutUint64(sa[2:10], bt)
-	// serviceClassId reste nul : le canal est désigné par son numéro.
+	// serviceClassId stays zero: the channel is addressed by number.
 	binary.LittleEndian.PutUint32(sa[26:30], port)
 	return sa
 }
 
-// fd_set de Winsock : un compteur suivi d'un tableau de handles, et non un
-// masque de bits comme sous POSIX.
+// Winsock's fd_set: a counter followed by an array of handles, not a bit mask
+// like on POSIX.
 type wsaFdSet struct {
 	Count uint32
 	Array [64]windows.Handle
@@ -115,8 +116,8 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 		return nil, fmt.Errorf("socket AF_BTH: %w", err)
 	}
 
-	// BTH_ADDR porte l'adresse 48 bits dans les octets de poids faible, lue
-	// dans l'ordre naturel de la MAC.
+	// BTH_ADDR carries the 48-bit address in its low bytes, read in the
+	// natural MAC order.
 	var bt uint64
 	for _, b := range addr {
 		bt = bt<<8 | uint64(b)
@@ -124,7 +125,7 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 
 	sa := encodeSockaddrBTH(bt, uint32(channel))
 
-	// Passage en non bloquant pour borner l'attente de connexion.
+	// Switch to non-blocking so the connect attempt can be bounded.
 	nonblocking := uint32(1)
 	if _, _, e := procIoctl.Call(uintptr(sock), uintptr(fionbio),
 		uintptr(unsafe.Pointer(&nonblocking))); e != nil {
@@ -134,8 +135,8 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 		}
 	}
 
-	// LazyProc.Call renvoie déjà l'erreur de GetLastError, qui coïncide avec
-	// WSAGetLastError sur les Windows modernes.
+	// LazyProc.Call already returns the GetLastError value, which matches
+	// WSAGetLastError on modern Windows.
 	r, _, callErr := procConnect.Call(uintptr(sock),
 		uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
 	if r != 0 {
@@ -145,14 +146,14 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 			return nil, mapWindowsErr(lastErr)
 		}
 
-		// Connexion en cours : on attend le verdict de la pile.
+		// Connection in progress: wait for the stack's verdict.
 		//
-		// ⚠ Écart avec POSIX, et non un détail : Winsock signale l'ÉCHEC d'un
-		// connect non bloquant dans exceptfds, jamais dans writefds. Le
-		// transport Linux ne surveille que writefds parce que le noyau y rend
-		// le socket inscriptible dans les deux cas ; recopier ce choix ici
-		// ferait attendre le délai entier à chaque canal fermé — 90 s pour un
-		// balayage complet — avant de conclure à tort à ErrTimeout.
+		// ⚠ A real divergence from POSIX, not a detail: Winsock reports the
+		// FAILURE of a non-blocking connect in exceptfds, never in writefds.
+		// The Linux transport only watches writefds because the kernel there
+		// makes the socket writable either way; copying that choice here would
+		// wait out the full timeout on every closed channel — 90 s for a full
+		// sweep — before wrongly concluding ErrTimeout.
 		var w, ex wsaFdSet
 		w.Count = 1
 		w.Array[0] = sock
@@ -181,7 +182,7 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 		}
 	}
 
-	// Retour en bloquant : les lectures sont bornées par SO_RCVTIMEO.
+	// Back to blocking: reads are bounded by SO_RCVTIMEO.
 	nonblocking = 0
 	procIoctl.Call(uintptr(sock), uintptr(fionbio), uintptr(unsafe.Pointer(&nonblocking)))
 
@@ -214,7 +215,7 @@ func (c *windowsConn) handle() (windows.Handle, error) {
 
 func (c *windowsConn) Read(p []byte) (int, error) {
 	if len(p) == 0 {
-		return 0, nil // &p[0] paniquerait
+		return 0, nil // &p[0] would panic
 	}
 	s, err := c.handle()
 	if err != nil {
@@ -245,8 +246,8 @@ func (c *windowsConn) Write(p []byte) (int, error) {
 	return int(n), nil
 }
 
-// SetReadTimeout : sous Windows, SO_RCVTIMEO attend un délai en millisecondes,
-// et non une struct timeval comme sous POSIX.
+// SetReadTimeout: on Windows, SO_RCVTIMEO takes a delay in milliseconds, not
+// a timeval struct like on POSIX.
 func (c *windowsConn) SetReadTimeout(d time.Duration) error {
 	s, err := c.handle()
 	if err != nil {

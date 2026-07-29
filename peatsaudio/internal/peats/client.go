@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-// Réglages issus des mesures sur un SOUNDPEATS H3.
+// Timings measured against a SOUNDPEATS H3.
 const (
-	// Une commande émise trop tôt après l'établissement du lien RFCOMM reste
-	// sans réponse. ~600 ms suffisent.
+	// A command sent too soon after the RFCOMM link comes up gets no reply.
+	// ~600 ms is enough.
 	settleDelay = 700 * time.Millisecond
 
 	defaultTimeout = 1500 * time.Millisecond
@@ -19,37 +19,37 @@ const (
 	readTimeout    = 300 * time.Millisecond
 )
 
-// Client est une connexion de contrôle vers une paire d'écouteurs.
+// Client is a control connection to a pair of earbuds.
 //
-// Le transport est fourni par la couche plateforme (transport_*.go) ; tout ce
-// qui suit est indépendant du système.
+// The transport comes from the platform layer (transport_*.go); everything
+// below is OS independent.
 type Client struct {
 	mu      sync.Mutex
 	conn    rfcommConn
 	channel uint8
 	closed  bool
 
-	// lost signale que le lien est tombé de lui-même. Distinct de closed :
-	// le socket reste à fermer, mais le client n'est plus utilisable.
+	// lost marks a link that dropped on its own. Distinct from closed: the
+	// socket still has to be released, but the client is unusable already.
 	lost bool
 
-	// exMu sérialise les échanges : un seul en vol à la fois.
+	// exMu serialises exchanges: one in flight at a time.
 	exMu sync.Mutex
 
 	frames  chan Frame
 	stopped chan struct{}
 
-	// OnFrame reçoit toutes les trames, y compris les notifications
-	// spontanées émises par les écouteurs.
+	// OnFrame receives every frame, including the spontaneous notifications
+	// the earbuds emit.
 	OnFrame func(Frame)
 
-	// OnDisconnect est appelé quand le lien tombe sans qu'on l'ait demandé —
-	// typiquement parce que les écouteurs redémarrent, ce que provoquent LDAC,
-	// le multipoint et LE Audio. N'est pas appelé sur un Close() volontaire.
+	// OnDisconnect fires when the link drops without being asked to —
+	// typically because the earbuds rebooted, which LDAC, multipoint and
+	// LE Audio all trigger. Not called on a deliberate Close().
 	OnDisconnect func()
 }
 
-// Connect ouvre une connexion de contrôle. channel = 0 déclenche la découverte.
+// Connect opens a control connection. channel = 0 triggers discovery.
 func Connect(mac string, channel uint8) (*Client, error) {
 	addr, err := ParseMAC(mac)
 	if err != nil {
@@ -70,7 +70,7 @@ func Connect(mac string, channel uint8) (*Client, error) {
 	}
 
 	if err := conn.SetReadTimeout(readTimeout); err != nil {
-		log.Printf("peats: délai de lecture non appliqué: %v", err)
+		log.Printf("peats: read timeout not applied: %v", err)
 	}
 
 	c := &Client{
@@ -81,7 +81,7 @@ func Connect(mac string, channel uint8) (*Client, error) {
 	}
 	go c.readLoop()
 
-	// Laisser le lien se stabiliser avant la première commande.
+	// Let the link settle before the first command.
 	time.Sleep(settleDelay)
 	return c, nil
 }
@@ -98,9 +98,9 @@ func (c *Client) transport() (rfcommConn, error) {
 }
 
 func (c *Client) readLoop() {
-	// À la sortie, le client est définitivement inutilisable : on marque la
-	// perte avant de fermer frames, pour que les échanges en cours échouent
-	// par ErrNotConnected plutôt que d'attendre un délai entier.
+	// On the way out the client is permanently unusable: mark the loss before
+	// closing frames, so in-flight exchanges fail with ErrNotConnected instead
+	// of waiting out a full timeout.
 	defer func() {
 		c.mu.Lock()
 		voluntary := c.closed
@@ -145,7 +145,7 @@ func (c *Client) readLoop() {
 			f, used, derr := Decode(acc)
 			if derr != nil {
 				if used > 0 {
-					acc = acc[used:] // bruit avant le SOF, on jette
+					acc = acc[used:] // noise before the SOF, drop it
 				}
 				break
 			}
@@ -155,19 +155,19 @@ func (c *Client) readLoop() {
 			}
 			select {
 			case c.frames <- f:
-			default: // consommateur en retard : ne pas bloquer la lecture
+			default: // consumer lagging: never block the read loop
 			}
 		}
 	}
 }
 
-// drain vide les trames en attente avant un nouvel échange, pour ne pas
-// confondre une notification ancienne avec la réponse attendue.
+// drain empties pending frames before a new exchange, so a stale notification
+// is not mistaken for the reply we are waiting on.
 //
-// ⚠ Le test `ok` n'est pas décoratif. Une fois `frames` fermé — ce qui arrive
-// dès que le lien tombe — une réception y réussit toujours immédiatement, donc
-// le `default` n'est plus jamais choisi. Sans ce test, la boucle tourne à
-// l'infini en tenant exMu, et fige l'application entière.
+// ⚠ The `ok` test is not decorative. Once `frames` is closed — which happens
+// as soon as the link drops — a receive on it always succeeds immediately, so
+// `default` is never selected again. Without the test the loop spins forever
+// holding exMu, and freezes the whole application.
 func (c *Client) drain() {
 	for {
 		select {
@@ -190,7 +190,7 @@ func (c *Client) write(b []byte) error {
 	return err
 }
 
-// await attend une trame satisfaisant match, dans la limite du timeout.
+// await waits for a frame satisfying match, bounded by timeout.
 func (c *Client) await(match func(Frame) bool, timeout time.Duration) (Frame, error) {
 	deadline := time.After(timeout)
 	for {
@@ -208,8 +208,8 @@ func (c *Client) await(match func(Frame) bool, timeout time.Duration) (Frame, er
 	}
 }
 
-// Get envoie une commande de lecture et attend sa réponse.
-// Les lectures sont réessayées : elles sont sans effet de bord.
+// Get sends a read command and waits for its reply.
+// Reads are retried: they have no side effects.
 func (c *Client) Get(cmd Command) (Frame, error) {
 	c.exMu.Lock()
 	defer c.exMu.Unlock()
@@ -231,22 +231,22 @@ func (c *Client) Get(cmd Command) (Frame, error) {
 	return Frame{}, fmt.Errorf("%s: %w", cmd, lastErr)
 }
 
-// Set envoie une commande d'écriture.
+// Set sends a write command.
 //
-// ⚠ Aucune réémission, jamais. Plusieurs `set` prennent effet sans acquitter
-// (mode ANC, multipoint) ; renvoyer la commande rejouerait l'effet de bord —
-// observé sur le H3 avec trois invites vocales pour une seule écriture voulue.
+// ⚠ Never retried, ever. Several `set` commands take effect *without*
+// acknowledging (ANC mode, multipoint); resending one replays the side effect
+// — observed on the H3 as three voice prompts for a single intended write.
 //
-// L'acquittement, quand il arrive, porte généralement l'opcode de réponse du
-// `get` correspondant plutôt que celui du `set`. Son absence n'est PAS une
-// erreur : l'appelant doit relire l'état pour vérifier.
+// The acknowledgement, when it comes, generally carries the reply opcode of
+// the matching `get` rather than that of the `set`. Its absence is NOT an
+// error: the caller must read the state back to verify.
 func (c *Client) Set(setCmd, getCmd Command, payload []byte) (Frame, bool) {
 	c.exMu.Lock()
 	defer c.exMu.Unlock()
 
 	c.drain()
 	if err := c.write(Encode(setCmd, payload, VendorDefault)); err != nil {
-		log.Printf("peats: échec d'écriture %s: %v", setCmd, err)
+		log.Printf("peats: write failed %s: %v", setCmd, err)
 		return Frame{}, false
 	}
 	want := getCmd.Response()
@@ -254,7 +254,7 @@ func (c *Client) Set(setCmd, getCmd Command, payload []byte) (Frame, bool) {
 	return f, err == nil
 }
 
-// SetBool est un raccourci pour les bascules.
+// SetBool is a shorthand for toggles.
 func (c *Client) SetBool(setCmd, getCmd Command, on bool) {
 	var v byte
 	if on {
@@ -263,13 +263,13 @@ func (c *Client) SetBool(setCmd, getCmd Command, on bool) {
 	c.Set(setCmd, getCmd, []byte{v})
 }
 
-// ApplyEQ envoie une courbe d'égaliseur, une trame par bande.
+// ApplyEQ sends an equaliser curve, one frame per band.
 //
-// La famille EQ utilise VendorEQ et répond avec EQResponse (0F 82), pas avec
-// la convention « bit 7 » du reste du protocole.
+// The EQ family uses VendorEQ and answers with EQResponse (0F 82), not with
+// the "bit 7" convention the rest of the protocol follows.
 func (c *Client) ApplyEQ(bands []EQBand, masterGain float64, v1 bool) error {
 	if len(bands) == 0 {
-		return errors.New("aucune bande à appliquer")
+		return errors.New("no band to apply")
 	}
 	c.exMu.Lock()
 	defer c.exMu.Unlock()
@@ -283,19 +283,19 @@ func (c *Client) ApplyEQ(bands []EQBand, masterGain float64, v1 bool) error {
 		c.drain()
 		payload := EncodeEQBand(len(bands), i+1, masterGain, b, v1)
 		if err := c.write(Encode(cmd, payload, VendorEQ)); err != nil {
-			return fmt.Errorf("bande %d: %w", i+1, err)
+			return fmt.Errorf("band %d: %w", i+1, err)
 		}
-		// L'ack est bref ; on l'attend sans en faire une condition d'échec.
+		// The ack is brief; wait for it without making it a failure condition.
 		if _, err := c.await(func(f Frame) bool { return f.Command == EQResponse },
 			defaultTimeout); err != nil {
-			log.Printf("peats: bande %d sans ack (poursuite)", i+1)
+			log.Printf("peats: band %d not acknowledged (continuing)", i+1)
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
 	return nil
 }
 
-// Close ferme la connexion de contrôle.
+// Close shuts the control connection down.
 func (c *Client) Close() {
 	c.mu.Lock()
 	if c.closed {

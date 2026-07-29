@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- French translation of values/strings.xml, which is the source language. -->
+<resources>
+    <!-- Permissions et connexion -->
+    <string name="permission_required">Autorisation Bluetooth requise.</string>
+    <string name="paired_earbuds">Écouteurs appairés</string>
+    <string name="no_paired_devices">Aucun appareil audio appairé. Appairez vos écouteurs dans les réglages Bluetooth, puis revenez ici.</string>
+    <string name="multipoint_hint">Si le multipoint est actif et qu\'un autre appareil tient le canal de contrôle, la connexion échouera : coupez-y le Bluetooth.</string>
+    <string name="connecting">Connexion…</string>
+    <string name="device_entry">%1$s  ·  %2$s</string>
+
+    <!-- Erreurs -->
+    <string name="error_bluetooth_unavailable">Bluetooth indisponible.</string>
+    <string name="error_channel_busy">Canal de contrôle occupé. Si le multipoint est actif, un autre appareil le monopolise — coupez-y le Bluetooth puis réessayez.</string>
+    <string name="error_refused">Les écouteurs ont refusé la connexion. Sortez-les de l\'étui et réessayez.</string>
+    <string name="error_generic">Connexion impossible : %1$s</string>
+
+    <!-- En-tête de l'appareil -->
+    <string name="firmware_unknown">firmware ?</string>
+    <string name="action_refresh">Relire</string>
+    <string name="action_close">Fermer</string>
+    <string name="battery_left">Gauche</string>
+    <string name="battery_right">Droite</string>
+    <string name="battery_case">Étui</string>
+    <string name="battery_percent">%1$d %%</string>
+
+    <!-- Réduction de bruit -->
+    <string name="section_anc">Réduction de bruit</string>
+    <string name="anc_off">Arrêt</string>
+    <string name="anc_on">ANC</string>
+    <string name="anc_transparency">Transparence</string>
+    <string name="anc_sub_mode">Sous-mode</string>
+    <string name="anc_sub_mode_inactive">Sous-mode — actif en réduction de bruit seulement</string>
+    <string name="anc_level_adaptive">Adaptative</string>
+    <string name="anc_level_indoor">Intérieur</string>
+    <string name="anc_level_outdoor">Extérieur</string>
+    <string name="anc_level_traffic">Trafic</string>
+    <string name="transparency_level">Niveau de transparence</string>
+    <string name="transparency_voice">Voix renforcée</string>
+    <string name="transparency_standard">Standard</string>
+
+    <!-- Codec et connectivité -->
+    <string name="section_codec">Codec et connectivité</string>
+    <string name="codec_hint">LDAC et multipoint sont exclusifs : le firmware coupe LDAC dès que le multipoint s\'active, faute de bande passante pour deux liens.</string>
+    <string name="toggle_ldac">LDAC</string>
+    <string name="toggle_multipoint">Multipoint</string>
+    <string name="toggle_le_audio">LE Audio</string>
+
+    <!-- Modes -->
+    <string name="section_modes">Modes</string>
+    <string name="toggle_game_mode">Mode jeu</string>
+    <string name="toggle_touch_disabled">Désactiver le tactile</string>
+
+    <!-- Invites vocales -->
+    <string name="section_voice_prompts">Invites vocales</string>
+    <string name="prompt_volume">Volume — %1$d</string>
+
+    <!-- Égaliseur -->
+    <string name="section_equaliser">Égaliseur</string>
+    <string name="eq_presets">Préréglages</string>
+    <string name="eq_preset_flat">Plat</string>
+    <string name="eq_preset_bass">Basses +</string>
+    <string name="eq_preset_vocal">Voix</string>
+    <string name="eq_preset_treble">Aigus +</string>
+    <string name="eq_preset_loudness">Loudness</string>
+    <string name="eq_granularity">Finesse</string>
+    <string name="eq_bands">%1$d bandes</string>
+    <string name="eq_band_detail">Bande %1$d — %2$s Hz</string>
+    <string name="eq_gain_db">%1$+.1f dB</string>
+    <string name="eq_bandwidth">Largeur de bande  Q %1$.1f</string>
+    <string name="eq_bandwidth_hint">Q faible : cloche large. Q élevé : correction étroite.</string>
+    <string name="eq_master_gain">Gain maître  %1$+.1f dB</string>
+    <string name="action_zero">Zéro</string>
+    <string name="action_apply">Appliquer</string>
+    <string name="action_applying">Application…</string>
+
+    <!-- Fonctions absentes -->
+    <string name="section_unsupported">Absent de ce modèle</string>
+
+    <!-- Journal -->
+    <string name="section_log">Journal</string>
+    <string name="log_connected">Connecté à %1$s.</string>
+    <string name="log_disconnected">Déconnecté.</string>
+    <string name="log_failed">Échec : %1$s</string>
+    <string name="log_refreshed">Rafraîchi. %1$d fonction(s) absente(s) de ce modèle.</string>
+    <string name="log_multipoint_enabling">Activation du multipoint — LDAC va être désactivé par le firmware.</string>
+    <string name="log_ldac_enabling">Activation de LDAC — le multipoint sera désactivé (exclusifs).</string>
+    <string name="log_eq_applied">EQ appliqué : %1$d bande(s).</string>
+</resources>

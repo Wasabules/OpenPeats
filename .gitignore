@@ -1,9 +1,13 @@
 # ---------------------------------------------------------------------------
-# Matériel de rétro-ingénierie — NE JAMAIS PUBLIER
+# Reverse-engineering material — NEVER PUBLISH
 #
-# L'APK de l'application officielle et tout ce qui en dérive (code décompilé,
-# smali, ressources) restent strictement locaux. Le dépôt ne contient que du
-# code écrit indépendamment à partir de la spécification observée.
+# The official application's APK and everything derived from it (decompiled
+# code, smali, resources) stay strictly local. This repository only holds code
+# written independently from the observed specification.
+#
+# This rule is about the *manufacturer's* APK. The release workflow builds our
+# own APK on the runner and uploads it straight to the GitHub release, so it
+# never passes through git.
 # ---------------------------------------------------------------------------
 *.apk
 jadx-out/
@@ -14,11 +18,11 @@ dexdir/
 *.btsnoop
 hci.btsnoop
 
-# Exception : le wrapper Gradle est un binaire légitime du projet, sans lequel
-# ./gradlew ne fonctionne pas sur un clone frais.
+# Exception: the Gradle wrapper is a legitimate project binary, without which
+# ./gradlew does not work on a fresh clone.
 !android/gradle/wrapper/gradle-wrapper.jar
 
-# Artefacts de compilation
+# Build artefacts
 build/bin/
 probe/peats-probe
 peatsaudio/frontend/dist/
@@ -26,7 +30,10 @@ peatsaudio/frontend/node_modules/
 peatsaudio/frontend/wailsjs/
 node_modules/
 
-# Divers
+# Release staging, produced by .github/workflows/release.yml
+dist/
+
+# Misc
 *.log
 .DS_Store
 
@@ -37,7 +44,8 @@ android/app/build/
 android/local.properties
 android/.idea/
 *.iml
+android/keystore.jks
 
-# Binaires compilés à la racine
+# Compiled binaries at the root
 /peatsctl
 /peatsctl.exe

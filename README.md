@@ -1,26 +1,74 @@
 # OpenPeats
 
-Contrôle libre des écouteurs **SoundPEATS** — ANC, égaliseur, multipoint,
-batteries — sans passer par l'application mobile du constructeur.
+Open control for **SoundPEATS** earbuds — ANC, equaliser, multipoint,
+batteries — without going through the manufacturer's mobile app.
 
-Développé et validé sur un **SOUNDPEATS H3** (firmware `S5_20250605_V0.4.9`)
-sous Ubuntu 24.04, puis sous Windows 11 et Android.
+*Read this in [français](README.fr.md).*
 
-> **Projet non officiel.** Aucun lien avec SoundPEATS. Fourni sans garantie.
+Developed and validated on a **SOUNDPEATS H3** (firmware `S5_20250605_V0.4.9`)
+on Ubuntu 24.04, then on Windows 11 and Android.
 
-## Contenu
+> **Unofficial project.** No affiliation with SoundPEATS. Provided without
+> warranty.
 
-| Dossier | Rôle |
+## Contents
+
+| Directory | Role |
 |---|---|
-| [`PROTOCOL.md`](PROTOCOL.md) | Spécification du protocole, avec le statut de vérification de chaque point |
-| [`peatsaudio/`](peatsaudio/) | Application de bureau (Wails + Go + Svelte) |
-| [`android/`](android/) | Application Android (Kotlin + Jetpack Compose) |
-| [`probe/`](probe/) | Sonde en ligne de commande pour explorer le protocole |
+| [`PROTOCOL.md`](PROTOCOL.md) | Protocol specification, with the verification status of every point |
+| [`peatsaudio/`](peatsaudio/) | Desktop application (Wails + Go + Svelte) |
+| [`android/`](android/) | Android application (Kotlin + Jetpack Compose) |
+| [`probe/`](probe/) | Command line probe for exploring the protocol |
 
-Le protocole est implémenté deux fois — en Go et en Kotlin — à partir de la même
-spécification. C'est délibéré : les ~350 lignes de logique sont peu coûteuses à
-porter, et chaque plateforme garde ainsi son transport natif sans couche de
-liaison. `PROTOCOL.md` reste la référence unique.
+The protocol is implemented twice — in Go and in Kotlin — from the same
+specification. That is deliberate: the ~350 lines of logic are cheap to port,
+and each platform keeps its native transport with no bridging layer.
+`PROTOCOL.md` remains the single reference.
+
+The reusable core is [`peatsaudio/internal/peats`](peatsaudio/internal/peats):
+pure protocol (frames, opcodes, equaliser encoding) and the RFCOMM/SPP
+transport, with no dependency on the interface.
+
+## Features
+
+- Noise control: off / ANC / transparency, plus 4 sub-modes (adaptive, indoor,
+  outdoor, traffic) and 2 transparency levels
+- Parametric equaliser with 5/8/10 bands, a draggable curve and per-band Q
+- LDAC and multipoint — presented as an exclusive choice, because the firmware
+  drops LDAC the moment multipoint comes on
+- Left / right / case batteries, with a desktop notification below a threshold
+- Game mode, LE Audio, touch lockout, voice prompts
+- Reading of the touch control mapping
+- Raw frame console for exploration
+
+The application queries every feature on startup and dims what does not answer,
+so it adapts to models exposing a different subset.
+
+## Install
+
+Prebuilt binaries for Linux, Windows and Android are attached to every
+[release](../../releases). Each one ships with a `SHA256SUMS` file.
+
+| Platform | Artefact |
+|---|---|
+| Linux | `.deb`, `.tar.gz`, plus the `peatsctl` command line tool |
+| Windows | NSIS installer, portable `.zip`, plus `peatsctl.exe` |
+| Android | `.apk` (and `.aab` for store submission) |
+
+## Build
+
+### Desktop
+
+```bash
+cd peatsaudio
+wails build -tags webkit2_41   # Ubuntu 24.04: webkit2gtk-4.1
+./build/bin/peatsaudio
+```
+
+On Windows and macOS the `webkit2_41` tag does not apply: `wails build` is
+enough. The earbuds must be paired and out of their case.
+
+### Android
 
 ```bash
 cd android
@@ -28,101 +76,91 @@ ANDROID_HOME=$HOME/Android/Sdk ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Le cœur réutilisable est [`peatsaudio/internal/peats`](peatsaudio/internal/peats) :
-protocole pur (trames, opcodes, encodage de l'égaliseur) et transport
-RFCOMM/SPP, sans dépendance à l'interface.
+## Languages
 
-## Fonctionnalités
+The interface is **English first** and translated at runtime; French ships in
+the box. The desktop app picks the language up from the system and lets you
+override it in the top bar, remembering the choice. Android follows the system
+language through standard resource qualifiers.
 
-- Réduction de bruit : arrêt / ANC / transparence, plus 4 sous-modes
-  (adaptative, intérieur, extérieur, trafic) et 2 niveaux de transparence
-- Égaliseur paramétrique 5/8/10 bandes, avec courbe manipulable et réglage
-  du Q par bande
-- LDAC et multipoint — présentés comme un choix exclusif, parce que le
-  firmware coupe LDAC dès que le multipoint s'active
-- Batteries gauche / droite / boîtier, avec notification de bureau sous seuil
-- Mode jeu, LE Audio, désactivation du tactile, invites vocales
-- Lecture du mapping des commandes tactiles
-- Console de trames brutes pour l'exploration
+Adding a language means adding catalogues, never touching application code:
 
-L'application interroge chaque fonction au démarrage et grise ce qui ne répond
-pas : elle s'adapte donc aux modèles qui exposent un sous-ensemble différent.
+| Where | Add |
+|---|---|
+| Desktop UI | `peatsaudio/frontend/src/locales/<lang>.json`, then list it in `frontend/src/lib/i18n.js` |
+| Desktop notifications and `peatsctl` | `peatsaudio/internal/i18n/locales/<lang>.json` |
+| Android | `android/app/src/main/res/values-<lang>/strings.xml` |
 
-## Démarrage
+English is the source language everywhere; a missing key falls back to English
+rather than showing a raw identifier. CI fails if a translation drifts from the
+English catalogue — missing keys, extra keys, or mismatched `{placeholders}`.
 
-```bash
-cd peatsaudio
-wails build -tags webkit2_41   # Ubuntu 24.04 : webkit2gtk-4.1
-./build/bin/peatsaudio
-```
+Documentation is English only, except this README which is also available in
+French. Code identifiers, commit messages and comments are English.
 
-Les écouteurs doivent être appairés et hors de l'étui.
+## Platforms
 
-## Plateformes
+The protocol runs over RFCOMM (Bluetooth Classic, SPP profile). Only the
+transport layer changes between systems; the logic is shared.
 
-Le protocole circule sur RFCOMM (Bluetooth Classic, profil SPP). Seule la
-couche transport change d'un système à l'autre ; la logique est commune.
-
-| Système | Transport | État |
+| System | Transport | Status |
 |---|---|---|
-| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ lecture et écriture validées |
-| Android | `BluetoothSocket` (Kotlin) | ✅ lecture et écriture validées |
-| Windows | Winsock `AF_BTH` | ✅ lecture et écriture validées |
-| macOS | IOBluetooth | ❌ à faire — voir ci-dessous |
+| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ reads and writes validated |
+| Android | `BluetoothSocket` (Kotlin) | ✅ reads and writes validated |
+| Windows | Winsock `AF_BTH` | ✅ reads and writes validated |
+| macOS | IOBluetooth | ❌ to do — see below |
 | iOS | — | 🚫 impossible |
 
-Sur Android, la validation couvre la lecture complète de l'état, le changement
-de mode ANC et l'application d'une courbe d'égaliseur, vérifiés sur un H3.
+On Android, validation covers a full state read, an ANC mode change and
+applying an equaliser curve, all checked on an H3.
 
-Sur Windows 11, la validation a été faite avec `peatsctl` sur un H3 : connexion
-sur le canal RFCOMM 11, 9 lectures sur 9 abouties, puis changement de mode ANC
-confirmé par relecture et à l'oreille. Un piège s'y est révélé : `ws2bth.h`
-inclut `pshpack1.h`, donc `SOCKADDR_BTH` est **packé sur 1 octet** — 30 octets,
-`btAddr` à l'offset 2. Une structure alignée naturellement place `btAddr` à
-l'offset 8 et fait rejeter tout `connect` par `WSAEADDRNOTAVAIL`, sur tous les
-canaux.
+On Windows 11, validation was done with `peatsctl` on an H3: connection on
+RFCOMM channel 11, 9 reads out of 9, then an ANC mode change confirmed by
+reading back and by ear. One trap surfaced there: `ws2bth.h` includes
+`pshpack1.h`, so `SOCKADDR_BTH` is **packed to 1 byte** — 30 bytes, with
+`btAddr` at offset 2. A naturally aligned struct puts `btAddr` at offset 8 and
+makes Windows reject every `connect` with `WSAEADDRNOTAVAIL`, on every channel.
 
-**macOS** est réalisable mais demande un pont cgo vers IOBluetooth, un
-framework Objective-C à API asynchrone par délégués : il n'y a pas d'API socket
-comme sur Linux et Windows, donc le code ne peut pas être écrit en miroir des
-deux autres transports.
+**macOS** is feasible but needs a cgo bridge to IOBluetooth, an Objective-C
+framework with an asynchronous delegate API: there is no socket API like on
+Linux and Windows, so the code cannot be written as a mirror of the other two
+transports.
 
-**Android** tourne sur un noyau Linux qui gère `AF_BLUETOOTH`, mais SELinux et
-le modèle de permissions bloquent les sockets Bluetooth bruts depuis le NDK. Le
-chemin pris en charge est `android.bluetooth.BluetoothSocket`, côté Kotlin.
+**Android** runs on a Linux kernel that does support `AF_BLUETOOTH`, but
+SELinux and the permission model block raw Bluetooth sockets from the NDK. The
+supported path is `android.bluetooth.BluetoothSocket`, on the Kotlin side.
 
-**iOS** est hors d'atteinte quel que soit le framework : le profil SPP y est
-réservé aux accessoires certifiés MFi, ce que ces écouteurs ne sont pas.
+**iOS** is out of reach whatever the framework: SPP there is reserved for
+MFi-certified accessories, which these earbuds are not.
 
-## Statut de la rétro-ingénierie
+## Reverse-engineering status
 
-Le protocole a été reconstitué par analyse de l'application Android officielle,
-puis **vérifié trame par trame** sur du matériel réel. `PROTOCOL.md` distingue
-systématiquement ce qui est confirmé sur le fil de ce qui reste supposé.
+The protocol was reconstructed by analysing the official Android application,
+then **verified frame by frame** on real hardware. `PROTOCOL.md` consistently
+separates what is confirmed on the wire from what remains inferred.
 
-Deux points restent non validés et sont signalés comme tels dans l'interface :
+Two points are still unvalidated and are flagged as such in the interface:
 
-- l'**écriture** du mapping tactile (la lecture, elle, fonctionne) ;
-- le mode démo tactile de l'app Android : la commande est acquittée, mais les
-  appuis ne remontent jamais — le tactile est géré en local par le firmware.
+- **writing** the touch mapping (reading it does work);
+- the Android app's touch demo mode: the command is acknowledged, but taps
+  never come back — touch is handled locally by the firmware.
 
-## Légalité
+## Legal
 
-Ce projet relève de l'**interopérabilité** : il permet à du matériel acheté
-légalement de fonctionner avec un système d'exploitation que le constructeur ne
-prend pas en charge. La rétro-ingénierie à cette fin est explicitement permise
-par la directive européenne 2009/24/CE (art. 6) et, aux États-Unis, par le
-17 U.S.C. §1201(f).
+This project is about **interoperability**: it lets legally purchased hardware
+work with an operating system the manufacturer does not support. Reverse
+engineering for that purpose is explicitly permitted by EU directive 2009/24/EC
+(art. 6) and, in the United States, by 17 U.S.C. §1201(f).
 
-En conséquence, ce dépôt **ne contient ni ne contiendra** :
+Accordingly, this repository **does not and will not contain**:
 
-- l'APK de l'application officielle ou une quelconque partie de celle-ci ;
-- du code décompilé, du smali, ou des ressources extraites ;
-- des marques, icônes ou éléments graphiques du constructeur.
+- the official application's APK or any part of it;
+- decompiled code, smali, or extracted resources;
+- manufacturer trademarks, icons or artwork.
 
-Tout le code publié ici a été écrit indépendamment à partir de la description
-du comportement observé. Ces éléments sont exclus par [`.gitignore`](.gitignore).
+All code published here was written independently from a description of the
+observed behaviour. Those materials are excluded by [`.gitignore`](.gitignore).
 
 ## Licence
 
-MIT — voir [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](LICENSE).

@@ -12,13 +12,14 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"peatsaudio/internal/i18n"
 	"peatsaudio/internal/peats"
 )
 
-// DefaultMAC : adresse des écouteurs de développement. Modifiable dans l'UI.
+// DefaultMAC is the development earbuds address. Editable in the UI.
 const DefaultMAC = "98:80:BB:40:D4:ED"
 
-// State est l'état complet du périphérique, poussé vers le frontend.
+// State is the full device state, pushed to the frontend.
 type State struct {
 	Connected bool   `json:"connected"`
 	MAC       string `json:"mac"`
@@ -47,16 +48,21 @@ type State struct {
 
 	KeyMappings []peats.KeyMapping `json:"keyMappings"`
 
-	// Supported indique quelles fonctions ce modèle expose réellement.
-	// Renseigné au rafraîchissement : une commande sans réponse répétée est
-	// considérée absente du matériel.
+	// Supported records which features this model actually exposes. Filled in
+	// on refresh: a command that stays silent across retries is taken as
+	// absent from the hardware.
 	Supported map[string]bool `json:"supported"`
 
 	BatteryAlert  bool `json:"batteryAlert"`
 	BatteryThresh int  `json:"batteryThresh"`
+
+	// Language is the locale Go renders its own output in — desktop
+	// notifications. The frontend sets it through SetLanguage so system
+	// notifications match the language shown in the window.
+	Language string `json:"language"`
 }
 
-// App est le contexte applicatif exposé à Wails.
+// App is the application context exposed to Wails.
 type App struct {
 	ctx context.Context
 
@@ -64,13 +70,13 @@ type App struct {
 	client *peats.Client
 	state  State
 
-	// notified retient quelles sources ont déjà déclenché une alerte, pour ne
-	// pas répéter la notification à chaque sondage.
+	// notified remembers which sources already raised an alert, so the
+	// notification is not repeated on every poll.
 	notified map[string]bool
 
-	// wantConnected distingue une chute de lien subie d'une déconnexion
-	// demandée : la reconnexion automatique ne doit pas contrarier un
-	// utilisateur qui vient de cliquer sur « Déconnecter ».
+	// wantConnected tells a dropped link apart from a requested disconnect:
+	// automatic reconnection must not fight a user who just clicked
+	// "Disconnect".
 	wantConnected bool
 
 	monitorStop chan struct{}
@@ -83,6 +89,7 @@ func NewApp() *App {
 			Supported:     map[string]bool{},
 			BatteryAlert:  true,
 			BatteryThresh: 20,
+			Language:      i18n.Locale(),
 		},
 		notified: map[string]bool{},
 	}
@@ -106,13 +113,13 @@ func (a *App) emit(event string, data ...any) {
 	}
 }
 
-// log pousse une ligne dans la console de l'UI.
-func (a *App) log(format string, args ...any) {
-	a.emit("log", fmt.Sprintf(format, args...))
+// log pushes a localisable line into the UI console.
+func (a *App) log(key string, args ...any) {
+	a.emit("log", msg(key, args...))
 }
 
-// emitFrame diffuse une trame vers la console de l'UI. Nommée plutôt
-// qu'anonyme, pour être rebranchée à l'identique après une reconnexion.
+// emitFrame broadcasts a frame to the UI console. Named rather than anonymous,
+// so it can be rebound identically after a reconnection.
 func (a *App) emitFrame(f peats.Frame) {
 	a.emit("frame", map[string]any{
 		"cmd":     f.Command.String(),
@@ -128,17 +135,37 @@ func (a *App) pushState() {
 	a.emit("state", s)
 }
 
-// GetState renvoie l'état courant (appel initial du frontend).
+// GetState returns the current state (initial frontend call).
 func (a *App) GetState() State {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.state
 }
 
-// ---------------------------------------------------------------- connexion
+// ---------------------------------------------------------------- language
 
-// Connect ouvre la connexion de contrôle et fait un premier rafraîchissement.
-func (a *App) Connect(mac string) string {
+// SetLanguage switches the locale Go renders its own output in — desktop
+// notifications — and returns the locale actually applied, which falls back to
+// English when no catalogue matches. The frontend calls this whenever the user
+// picks a language, so a notification never arrives in a different language
+// from the window that triggered it.
+func (a *App) SetLanguage(tag string) string {
+	applied := i18n.SetLocale(tag)
+	a.mu.Lock()
+	a.state.Language = applied
+	a.mu.Unlock()
+	a.pushState()
+	return applied
+}
+
+// AvailableLanguages lists the locales this build ships.
+func (a *App) AvailableLanguages() []string { return i18n.Available() }
+
+// ---------------------------------------------------------------- connection
+
+// Connect opens the control connection and does a first refresh.
+// The returned Message is empty on success.
+func (a *App) Connect(mac string) Message {
 	if strings.TrimSpace(mac) == "" {
 		mac = DefaultMAC
 	}
@@ -150,23 +177,23 @@ func (a *App) Connect(mac string) string {
 	}
 	a.mu.Unlock()
 
-	a.log("Connexion à %s…", mac)
+	a.log("log.connecting", "mac", mac)
 	cl, err := peats.Connect(mac, 0)
 	if err != nil {
-		msg := describeConnectError(err)
-		a.log("Échec : %s", msg)
+		reason := describeConnectError(err)
+		a.log("log.connectFailed")
 		a.mu.Lock()
 		a.state.Connected = false
 		a.mu.Unlock()
 		a.pushState()
-		return msg
+		return reason
 	}
 
-	// Toutes les trames sont diffusées vers le journal de l'UI.
+	// Every frame is mirrored into the UI log.
 	cl.OnFrame = a.emitFrame
 
-	// Plusieurs réglages font redémarrer les écouteurs : sans cela, la chute du
-	// lien passerait inaperçue et l'interface resterait figée sur un état mort.
+	// Several settings reboot the earbuds: without this, the link dropping
+	// would go unnoticed and the interface would freeze on a dead state.
 	cl.OnDisconnect = a.handleDisconnect
 
 	a.mu.Lock()
@@ -178,22 +205,26 @@ func (a *App) Connect(mac string) string {
 	a.wantConnected = true
 	a.mu.Unlock()
 
-	a.log("Connecté sur le canal RFCOMM %d.", cl.Channel())
+	a.log("log.connected", "channel", cl.Channel())
 	a.Refresh()
 	a.startMonitor()
-	return ""
+	return Message{}
 }
 
-func describeConnectError(err error) string {
+// describeConnectError turns a transport error into a message the UI can
+// render, keeping the actionable advice attached to each known cause.
+func describeConnectError(err error) Message {
 	switch {
 	case errors.Is(err, peats.ErrBusy):
-		return "Canal de contrôle occupé. Si le multipoint est actif, un autre " +
-			"appareil (téléphone avec l'app PeatsAudio ouverte) le monopolise — " +
-			"coupez-y le Bluetooth puis réessayez."
+		return msg("error.busy")
+	case errors.Is(err, peats.ErrUnreachable):
+		return msg("error.unreachable")
 	case errors.Is(err, peats.ErrNoChannel):
-		return "Aucun canal RFCOMM. Écouteurs éteints, dans l'étui, ou non appairés."
+		return msg("error.noChannel")
+	case errors.Is(err, peats.ErrUnsupported):
+		return msg("error.unsupported")
 	default:
-		return err.Error()
+		return msg("error.raw", "error", err.Error())
 	}
 }
 
@@ -207,29 +238,29 @@ func (a *App) Disconnect() {
 	a.state.Connected = false
 	a.wantConnected = false
 	a.mu.Unlock()
-	a.log("Déconnecté.")
+	a.log("log.disconnected")
 	a.pushState()
 }
 
-// ------------------------------------------------------ reprise après reboot
+// ------------------------------------------------------- recovery after reboot
 
-// reconnectDelay laisse aux écouteurs le temps de redémarrer. Une tentative
-// trop précoce échoue et consomme un essai pour rien.
+// reconnectDelay gives the earbuds time to come back up. Trying too early
+// fails and burns an attempt for nothing.
 const (
 	reconnectDelay    = 3 * time.Second
 	reconnectAttempts = 10
 )
 
-// handleDisconnect réagit à une chute du lien qu'on n'a pas demandée.
+// handleDisconnect reacts to a link drop we did not ask for.
 //
-// LDAC, le multipoint et LE Audio font redémarrer les écouteurs : le canal de
-// contrôle tombe et ne revient qu'après quelques secondes. Sans cette reprise,
-// l'application restait sur un client mort dont toutes les commandes
-// échouaient, sans jamais l'annoncer.
+// LDAC, multipoint and LE Audio all reboot the earbuds: the control channel
+// goes down and only comes back a few seconds later. Without this recovery the
+// application sat on a dead client whose every command failed, and never said
+// so.
 func (a *App) handleDisconnect() {
 	a.mu.Lock()
 	dead := a.client
-	if dead == nil { // déconnexion volontaire déjà traitée
+	if dead == nil { // deliberate disconnect, already handled
 		a.mu.Unlock()
 		return
 	}
@@ -239,24 +270,24 @@ func (a *App) handleDisconnect() {
 	retry := a.wantConnected
 	a.mu.Unlock()
 
-	dead.Close() // le socket reste à libérer même si le lien est perdu
+	dead.Close() // the socket still needs releasing even with the link gone
 	a.stopMonitor()
 	a.pushState()
 
 	if !retry {
-		a.log("Lien perdu.")
+		a.log("log.linkLost")
 		return
 	}
-	a.log("Lien perdu — les écouteurs ont redémarré. Reconnexion en cours…")
+	a.log("log.linkLostReconnecting")
 	go a.reconnectLoop(mac)
 }
 
-// reconnectLoop retente la connexion pendant le redémarrage des écouteurs.
+// reconnectLoop retries the connection while the earbuds reboot.
 func (a *App) reconnectLoop(mac string) {
 	for i := 1; i <= reconnectAttempts; i++ {
 		time.Sleep(reconnectDelay)
 
-		// L'utilisateur a pu se déconnecter ou reconnecter entre-temps.
+		// The user may have disconnected or reconnected in the meantime.
 		a.mu.RLock()
 		abandon := !a.wantConnected || a.client != nil
 		a.mu.RUnlock()
@@ -266,7 +297,10 @@ func (a *App) reconnectLoop(mac string) {
 
 		cl, err := peats.Connect(mac, 0)
 		if err != nil {
-			a.log("Reconnexion %d/%d : %s", i, reconnectAttempts, describeConnectError(err))
+			a.log("log.reconnectAttempt",
+				"attempt", i,
+				"total", reconnectAttempts,
+				"reason", ref(describeConnectError(err).Key))
 			continue
 		}
 
@@ -279,16 +313,15 @@ func (a *App) reconnectLoop(mac string) {
 		a.state.Channel = int(cl.Channel())
 		a.mu.Unlock()
 
-		a.log("Reconnecté sur le canal RFCOMM %d.", cl.Channel())
+		a.log("log.reconnected", "channel", cl.Channel())
 		a.Refresh()
 		a.startMonitor()
 		return
 	}
-	a.log("Reconnexion impossible après %d essais. Relancez-la à la main.",
-		reconnectAttempts)
+	a.log("log.reconnectGaveUp", "attempts", reconnectAttempts)
 }
 
-// ------------------------------------------------- surveillance des batteries
+// -------------------------------------------------------- battery monitoring
 
 const batteryPollInterval = 90 * time.Second
 
@@ -323,8 +356,8 @@ func (a *App) stopMonitor() {
 	a.mu.Unlock()
 }
 
-// pollBatteries relit les niveaux et déclenche une alerte au franchissement du
-// seuil. Une hystérésis de 5 points évite le clignotement autour du seuil.
+// pollBatteries reads the levels back and raises an alert when one crosses the
+// threshold. A 5-point hysteresis avoids flapping around the threshold.
 func (a *App) pollBatteries() {
 	c := a.conn()
 	if c == nil {
@@ -332,15 +365,15 @@ func (a *App) pollBatteries() {
 	}
 
 	readings := []struct {
-		key, label string
-		cmd        peats.Command
-		set        func(int)
+		key, labelKey string
+		cmd           peats.Command
+		set           func(int)
 	}{
-		{"left", "écouteur gauche", peats.CmdBatteryLeft,
+		{"left", "battery.left", peats.CmdBatteryLeft,
 			func(v int) { a.state.BatteryLeft = v }},
-		{"right", "écouteur droit", peats.CmdBatteryRight,
+		{"right", "battery.right", peats.CmdBatteryRight,
 			func(v int) { a.state.BatteryRight = v }},
-		{"case", "boîtier", peats.CmdBatteryCase,
+		{"case", "battery.case", peats.CmdBatteryCase,
 			func(v int) { a.state.BatteryCase = v }},
 	}
 
@@ -355,7 +388,7 @@ func (a *App) pollBatteries() {
 			continue
 		}
 		v := int(f.Scalar())
-		if v > 100 { // valeur aberrante : on ignore plutôt que d'alerter à tort
+		if v > 100 { // out-of-range value: ignore rather than alert wrongly
 			continue
 		}
 		a.mu.Lock()
@@ -366,7 +399,7 @@ func (a *App) pollBatteries() {
 			a.notified[r.key] = true
 			a.mu.Unlock()
 			if alert {
-				a.notifyLowBattery(r.label, v)
+				a.notifyLowBattery(r.labelKey, v)
 			}
 		case v > thresh+5 && already:
 			a.notified[r.key] = false
@@ -382,28 +415,33 @@ func (a *App) pollBatteries() {
 	}
 }
 
-// notifyLowBattery envoie une notification de bureau et prévient l'UI.
-func (a *App) notifyLowBattery(label string, pct int) {
-	title := "Batterie faible — SoundPEATS"
-	body := fmt.Sprintf("%s à %d %%.", label, pct)
+// notifyLowBattery sends a desktop notification and tells the UI.
+//
+// This is one of the few places Go renders text itself, so it goes through the
+// Go catalogue rather than emitting a key: the notification daemon takes a
+// finished string.
+func (a *App) notifyLowBattery(labelKey string, pct int) {
+	label := i18n.T(labelKey)
+	title := i18n.T("notify.lowBattery.title")
+	body := i18n.T("notify.lowBattery.body", "label", label, "percent", pct)
 
-	a.log("⚠ %s", body)
-	a.emit("alert", map[string]any{"label": label, "pct": pct})
+	a.log("log.lowBattery", "label", ref(labelKey), "percent", pct)
+	a.emit("alert", map[string]any{"labelKey": labelKey, "percent": pct})
 
-	// notify-send est présent sur toute installation de bureau freedesktop.
-	// Son absence n'est pas une erreur bloquante : l'alerte reste visible
-	// dans l'application.
+	// notify-send ships with every freedesktop desktop. Its absence is not a
+	// blocking error: the alert stays visible inside the application. On
+	// Windows it is simply missing, which is why the in-app banner exists.
 	cmd := exec.Command("notify-send",
 		"--app-name=PeatsAudio",
 		"--urgency=critical",
 		"--icon=audio-headset",
 		title, body)
 	if err := cmd.Run(); err != nil {
-		a.log("Notification système indisponible (%v).", err)
+		a.log("log.notifyUnavailable", "error", err.Error())
 	}
 }
 
-// SetBatteryAlert active ou coupe les notifications de batterie faible.
+// SetBatteryAlert turns low-battery notifications on or off.
 func (a *App) SetBatteryAlert(on bool) {
 	a.mu.Lock()
 	a.state.BatteryAlert = on
@@ -411,7 +449,7 @@ func (a *App) SetBatteryAlert(on bool) {
 	a.pushState()
 }
 
-// SetBatteryThreshold règle le seuil d'alerte (5–50 %).
+// SetBatteryThreshold sets the alert threshold (5–50%).
 func (a *App) SetBatteryThreshold(v int) {
 	if v < 5 {
 		v = 5
@@ -421,15 +459,15 @@ func (a *App) SetBatteryThreshold(v int) {
 	}
 	a.mu.Lock()
 	a.state.BatteryThresh = v
-	a.notified = map[string]bool{} // le seuil change : on réarme les alertes
+	a.notified = map[string]bool{} // threshold moved: rearm the alerts
 	a.mu.Unlock()
 	a.pushState()
 }
 
-// TestBatteryNotification envoie une notification factice pour vérifier que le
-// canal de notification du bureau fonctionne.
+// TestBatteryNotification sends a dummy notification to check the desktop
+// notification channel works.
 func (a *App) TestBatteryNotification() {
-	a.notifyLowBattery("test", 15)
+	a.notifyLowBattery("notify.test.label", 15)
 }
 
 func (a *App) conn() *peats.Client {
@@ -438,9 +476,9 @@ func (a *App) conn() *peats.Client {
 	return a.client
 }
 
-// ---------------------------------------------------------------- lectures
+// ------------------------------------------------------------------- reads
 
-// Refresh relit tout l'état du périphérique et met à jour la carte de support.
+// Refresh reads the whole device state back and updates the support map.
 func (a *App) Refresh() {
 	c := a.conn()
 	if c == nil {
@@ -478,7 +516,7 @@ func (a *App) Refresh() {
 
 	if f, err := c.Get(peats.CmdFirmware); err == nil {
 		supported["firmware"] = true
-		// 1er octet de statut, puis la version en ASCII.
+		// One status byte, then the version in ASCII.
 		if len(f.Payload) > 1 {
 			s.Firmware = strings.TrimRight(string(f.Payload[1:]), "\x00")
 		}
@@ -548,14 +586,14 @@ func (a *App) Refresh() {
 			n++
 		}
 	}
-	a.log("Rafraîchi : %d/%d fonctions disponibles sur ce modèle.", n, len(supported))
+	a.log("log.refreshed", "available", n, "total", len(supported))
 	a.pushState()
 }
 
-// ---------------------------------------------------------------- écritures
+// ------------------------------------------------------------------ writes
 //
-// Après chaque écriture on relit l'état : plusieurs `set` prennent effet sans
-// acquitter, et réémettre la commande rejouerait l'effet de bord.
+// Every write is followed by a read back: several `set` commands take effect
+// without acknowledging, and resending one would replay the side effect.
 
 func (a *App) settle() { time.Sleep(400 * time.Millisecond) }
 
@@ -610,7 +648,7 @@ func (a *App) SetTransparencyLevel(code int) {
 	a.pushState()
 }
 
-// setToggle factorise les bascules : écrire, laisser retomber, relire.
+// setToggle factors the switches out: write, let it settle, read back.
 func (a *App) setToggle(setCmd, getCmd peats.Command, on bool, apply func(bool)) {
 	c := a.conn()
 	if c == nil {
@@ -631,13 +669,13 @@ func (a *App) SetGameMode(on bool) {
 		func(v bool) { a.state.GameMode = v })
 }
 
-// SetLEAudio bascule LE Audio.
+// SetLEAudio toggles LE Audio.
 //
-// Comme LDAC et le multipoint, ce réglage fait redémarrer les écouteurs : le
-// canal de contrôle tombe aussitôt. La reprise est prise en charge par
-// handleDisconnect ; l'échec des relectures qui suivent est donc normal.
+// Like LDAC and multipoint, this setting reboots the earbuds: the control
+// channel drops immediately. Recovery is handled by handleDisconnect, so the
+// read backs that follow are expected to fail.
 func (a *App) SetLEAudio(on bool) {
-	a.log("Bascule de LE Audio — les écouteurs vont redémarrer.")
+	a.log("log.leAudioToggling")
 	a.setToggle(peats.CmdLEAudioSet, peats.CmdLEAudioGet, on,
 		func(v bool) { a.state.LEAudio = v })
 }
@@ -677,24 +715,23 @@ func (a *App) SetPromptVolume(v int) {
 	a.pushState()
 }
 
-// SetMultipoint bascule le multipoint.
+// SetMultipoint toggles multipoint.
 //
-// Le firmware désactive LDAC de lui-même quand le multipoint s'active : la
-// bande passante ne permet pas du LDAC sur deux liens. On relit donc les deux.
-// L'opération reconfigure les liens et peut rendre le canal indisponible un
-// court instant.
+// The firmware turns LDAC off by itself when multipoint comes on: there is not
+// enough bandwidth for LDAC over two links. So both are read back. The
+// operation reconfigures the links and can make the channel briefly
+// unavailable.
 func (a *App) SetMultipoint(on bool) {
 	c := a.conn()
 	if c == nil {
 		return
 	}
 	if on {
-		a.log("Activation du multipoint — LDAC va être désactivé par le firmware " +
-			"(bande passante insuffisante sur deux liens).")
+		a.log("log.multipointEnabling")
 	}
-	a.log("Les écouteurs vont redémarrer ; la reconnexion est automatique.")
+	a.log("log.willReboot")
 	c.SetBool(peats.CmdMultipointSet, peats.CmdMultipointGet, on)
-	time.Sleep(1200 * time.Millisecond) // reconfiguration des liens
+	time.Sleep(1200 * time.Millisecond) // link reconfiguration
 
 	if f, err := c.Get(peats.CmdMultipointGet); err == nil {
 		a.mu.Lock()
@@ -709,16 +746,16 @@ func (a *App) SetMultipoint(on bool) {
 	a.pushState()
 }
 
-// SetLDAC bascule LDAC, exclusif du multipoint (voir SetMultipoint).
+// SetLDAC toggles LDAC, which is exclusive with multipoint (see SetMultipoint).
 func (a *App) SetLDAC(on bool) {
 	c := a.conn()
 	if c == nil {
 		return
 	}
 	if on {
-		a.log("Activation de LDAC — le multipoint sera désactivé (exclusifs).")
+		a.log("log.ldacEnabling")
 	}
-	a.log("Les écouteurs vont redémarrer ; la reconnexion est automatique.")
+	a.log("log.willReboot")
 	c.SetBool(peats.CmdLDACSet, peats.CmdLDACGet, on)
 	time.Sleep(1200 * time.Millisecond)
 
@@ -735,18 +772,18 @@ func (a *App) SetLDAC(on bool) {
 	a.pushState()
 }
 
-// ---------------------------------------------------------------- tactile
+// ------------------------------------------------------------------- touch
 
-// SetKeyMappings réécrit le mapping tactile.
+// SetKeyMappings rewrites the touch mapping.
 //
-// ⚠ NON VÉRIFIÉ sur le fil. La structure du payload reproduit celle observée
-// en lecture, mais aucune écriture n'a été validée. L'UI le signale.
+// ⚠ UNVERIFIED on the wire. The payload layout mirrors the one observed on
+// reads, but no write has ever been validated. The UI says so.
 func (a *App) SetKeyMappings(ms []peats.KeyMapping) {
 	c := a.conn()
 	if c == nil {
 		return
 	}
-	a.log("Écriture du mapping tactile (non vérifiée sur ce matériel).")
+	a.log("log.touchMappingWrite")
 	c.Set(peats.CmdCustomKeySet, peats.CmdCustomKeyGet, peats.EncodeKeyMappings(ms))
 	a.settle()
 	if f, err := c.Get(peats.CmdCustomKeyGet); err == nil {
@@ -757,34 +794,34 @@ func (a *App) SetKeyMappings(ms []peats.KeyMapping) {
 	a.pushState()
 }
 
-// Le mode démo tactile (CUSTOMIZE_TOUCH_DEBUG / SET_CUSTOMIZE_TOUCH_DEMO)
-// présent dans l'app Android a été testé sur le H3 : la commande 03 AB 00 00
-// est bien acquittée (83 AB 00 00 01), mais AUCUNE trame n'est émise lors des
-// appuis, et ceux-ci continuent d'exécuter leur action normale. Le tactile est
-// géré en local par le firmware sur ce modèle. Fonctionnalité retirée plutôt
-// que d'exposer un bouton sans effet.
+// The touch demo mode (CUSTOMIZE_TOUCH_DEBUG / SET_CUSTOMIZE_TOUCH_DEMO) found
+// in the Android app was tested on the H3: the command 03 AB 00 00 is properly
+// acknowledged (83 AB 00 00 01), but NO frame is emitted on a tap, and taps
+// keep performing their normal action. Touch is handled locally by the
+// firmware on this model. The feature was dropped rather than exposing a
+// button that does nothing.
 
-// ---------------------------------------------------------------- égaliseur
+// --------------------------------------------------------------- equaliser
 
-// ApplyEQ applique une courbe paramétrique.
+// ApplyEQ applies a parametric curve.
 //
-// Le firmware décide de la version de protocole EQ : v1 pour les puces
-// Qualcomm et une liste de firmwares en dur, v2/v3 sinon. Le H3 (firmware
-// « S5 ») utilise v2/v3.
-func (a *App) ApplyEQ(bands []peats.EQBand, masterGain float64) string {
+// The firmware decides the EQ protocol version: v1 for Qualcomm chips and a
+// hard-coded firmware list, v2/v3 otherwise. The H3 (firmware "S5") uses
+// v2/v3. The returned Message is empty on success.
+func (a *App) ApplyEQ(bands []peats.EQBand, masterGain float64) Message {
 	c := a.conn()
 	if c == nil {
-		return "non connecté"
+		return msg("error.notConnected")
 	}
 	if err := c.ApplyEQ(bands, masterGain, a.eqUsesV1()); err != nil {
-		a.log("EQ : %v", err)
-		return err.Error()
+		a.log("log.eqFailed", "error", err.Error())
+		return msg("error.raw", "error", err.Error())
 	}
-	a.log("EQ appliqué : %d bande(s), gain maître %.1f dB.", len(bands), masterGain)
-	return ""
+	a.log("log.eqApplied", "bands", len(bands), "gain", fmt.Sprintf("%.1f", masterGain))
+	return Message{}
 }
 
-// eqUsesV1 reproduit needInParallel() de l'app Android.
+// eqUsesV1 mirrors needInParallel() from the Android app.
 func (a *App) eqUsesV1() bool {
 	a.mu.RLock()
 	fw := a.state.Firmware
@@ -801,33 +838,35 @@ func (a *App) eqUsesV1() bool {
 	return false
 }
 
-// ---------------------------------------------------------------- avancé
+// ---------------------------------------------------------------- advanced
 
-// SendRaw émet une trame arbitraire. Réservé au panneau avancé.
-// Aucune réémission : une commande inconnue peut avoir un effet de bord.
-func (a *App) SendRaw(cmdHex, payloadHex string, eqVendor bool) string {
+// SendRaw emits an arbitrary frame. Reserved for the advanced panel.
+// Never retried: an unknown command may carry a side effect.
+func (a *App) SendRaw(cmdHex, payloadHex string, eqVendor bool) Message {
 	c := a.conn()
 	if c == nil {
-		return "non connecté"
+		return msg("error.notConnected")
 	}
 	cb, err := hex.DecodeString(strings.ReplaceAll(cmdHex, " ", ""))
 	if err != nil || len(cb) != 2 {
-		return "commande invalide : attendu 2 octets hex (ex. 0306)"
+		return msg("error.invalidCommand")
 	}
 	var pb []byte
 	if strings.TrimSpace(payloadHex) != "" {
 		pb, err = hex.DecodeString(strings.ReplaceAll(payloadHex, " ", ""))
 		if err != nil {
-			return "payload hex invalide"
+			return msg("error.invalidPayload")
 		}
 	}
 	cmd := peats.Command{cb[0], cb[1]}
 	f, ok := c.Set(cmd, cmd, pb)
 	if !ok {
-		a.log("→ %s %s — pas de réponse", cmd, strings.ToUpper(payloadHex))
-		return ""
+		a.log("log.rawNoReply", "cmd", cmd, "payload", strings.ToUpper(payloadHex))
+		return Message{}
 	}
-	a.log("→ %s ← %s payload=%s", cmd, f.Command,
-		strings.ToUpper(hex.EncodeToString(f.Payload)))
-	return ""
+	a.log("log.rawReply",
+		"cmd", cmd,
+		"reply", f.Command,
+		"payload", strings.ToUpper(hex.EncodeToString(f.Payload)))
+	return Message{}
 }

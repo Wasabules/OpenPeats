@@ -7,12 +7,20 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+
+	"peatsaudio/internal/i18n"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
+	// Pick the system language up before the window exists, so anything Go
+	// renders on its own — a notification fired early — is already localised.
+	// The frontend overrides this through App.SetLanguage as soon as it knows
+	// the user's actual choice.
+	i18n.SetLocale(i18n.DetectLocale())
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{

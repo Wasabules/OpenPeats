@@ -1,126 +1,179 @@
-# PeatsAudio — contrôle SoundPEATS sous Linux
+# PeatsAudio — desktop SoundPEATS control
 
-Application de bureau (Wails + Go + Svelte) qui pilote des écouteurs SoundPEATS
-via le protocole propriétaire reconstitué dans [`../PROTOCOL.md`](../PROTOCOL.md).
+Desktop application (Wails + Go + Svelte) driving SoundPEATS earbuds through
+the proprietary protocol reconstructed in [`../PROTOCOL.md`](../PROTOCOL.md).
 
-Développée et validée sur un **SOUNDPEATS H3**, firmware `S5_20250605_V0.4.9`,
-sous Ubuntu 24.04.
+Developed and validated on a **SOUNDPEATS H3**, firmware `S5_20250605_V0.4.9`,
+on Ubuntu 24.04, then on Windows 11.
 
-## Compilation
+## Build
 
-Ubuntu 24.04 ne fournit plus `webkit2gtk-4.0`. Le tag de build est obligatoire :
+Ubuntu 24.04 no longer ships `webkit2gtk-4.0`. The build tag is mandatory
+there:
 
 ```bash
 wails build -tags webkit2_41
 ./build/bin/peatsaudio
 ```
 
-En développement : `wails dev -tags webkit2_41`.
+Development: `wails dev -tags webkit2_41`. On Windows and macOS the tag does
+not apply.
 
 ## Tests
 
 ```bash
-go test ./internal/peats -v                       # unitaires, sans matériel
+go test ./internal/... -v                          # unit tests, no hardware
 PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v
 ```
 
-Les tests unitaires décodent des trames **réellement capturées** sur le H3 :
-réponse batterie, sous-mode ANC, mapping tactile, encodage d'une bande d'EQ.
+The unit tests decode frames **actually captured** on the H3: battery reply,
+ANC sub-mode, touch mapping, encoding of one EQ band. The i18n tests check the
+translation catalogues against the English source.
+
+`go vet ./...` and `go build ./...` **fail on a clean tree**: `main.go` does
+`//go:embed all:frontend/dist`, and `frontend/dist/` is git-ignored. Either
+stick to `go vet ./internal/... ./cmd/...`, or build the frontend first
+(`cd frontend && npm install && npm run build`).
+
+## peatsctl — validating a transport without a GUI
+
+```bash
+go build ./cmd/peatsctl
+./peatsctl -addr 98:80:BB:40:D4:ED           # read only
+./peatsctl -addr 98:80:BB:40:D4:ED -anc 1    # write the ANC mode, then read back
+./peatsctl -addr 98:80:BB:40:D4:ED -lang fr  # French output
+```
+
+This is the tool to use when bringing up a platform whose transport has never
+run: it exercises connection, reads and writes without depending on Wails.
 
 ## Architecture
 
 ```
-internal/peats/protocol.go   trames, opcodes, énumérations, encodage EQ
-internal/peats/client.go     transport RFCOMM/SPP, retry, découverte de canal
-app.go                       état + méthodes exposées au frontend
-frontend/src/                interface Svelte
+internal/peats/protocol.go     frames, opcodes, EQ encoding — pure, no I/O
+internal/peats/client.go       exchanges, retry, channel discovery — no OS
+internal/peats/transport.go    rfcommConn interface + var dialRFCOMM
+internal/peats/transport_*.go  one implementation per OS, chosen by build tag
+internal/i18n/                 catalogue for what Go renders itself
+message.go                     Message: the {key, args} pairs Go emits
+app.go                         application state + Wails-bound methods
+frontend/src/                  Svelte interface
+frontend/src/locales/          UI catalogues (source of truth: en.json)
 ```
 
-## Pièges du protocole (appris à la dure)
+`dialRFCOMM` is a global variable each `transport_*.go` fills in from its
+`init()`. Adding a platform means adding a file with the right build tag and
+implementing `rfcommConn` + `isTimeout`; nothing else moves.
+`transport_stub.go` (`//go:build !linux && !windows`) returns `ErrUnsupported`.
 
-Ces points ne sont pas des détails d'implémentation : ils cassent silencieusement
-tout client qui les ignore.
+## Localisation
 
-**Ne jamais réessayer une écriture.** Plusieurs `set` prennent effet *sans*
-acquitter (mode ANC, multipoint). Interpréter l'absence de réponse comme un échec
-et renvoyer la commande rejoue l'effet de bord — constaté avec trois invites
-vocales pour un seul changement voulu. Pour vérifier qu'un `set` a pris :
-**relire l'état**.
+Two catalogues, split by **who renders the text**, so no string is ever
+translated twice in places that could drift apart:
 
-**L'acquittement d'un `set` porte l'opcode de réponse du `get`.** Écrire `03 11`
-donne une réponse `83 10`, pas `83 11`. Attendre `83 11` bloque indéfiniment.
+| Catalogue | Covers | Rendered by |
+|---|---|---|
+| `frontend/src/locales/*.json` | Everything in the window, including log lines and connection errors | The frontend |
+| `internal/i18n/locales/*.json` | Desktop notifications, `peatsctl` output | Go |
 
-**L'EQ suit une convention différente.** `0E 02` répond `0F 82` — ce n'est pas la
-règle « bit 7 sur le premier octet » du reste du protocole. Et l'EQ utilise
-`vendorId 001D` au lieu de `000A`.
+Go **never sends text to the frontend**. It sends `Message{Key, Args}` values
+(see `message.go`); the frontend renders them at display time. Two consequences
+worth knowing:
 
-**Les payloads sont asymétriques.** Les réponses de lecture encodent les
-scalaires sur 2 octets big-endian (`00 64` = 100) ; les écritures prennent
-1 octet.
+- Switching language re-renders the whole log, retroactively — the lines were
+  never text to begin with.
+- An argument whose value starts with `@:` is itself a catalogue key (the
+  linked-message convention), which is how a nested reason stays translated
+  inside a sentence Go assembled: `Reconnect 2/10: control channel busy`.
 
-**Délai de stabilisation obligatoire.** Une commande émise moins de ~600 ms après
-l'établissement du lien RFCOMM reste sans réponse. Sans ce délai, les lectures
-semblent aléatoires.
+The frontend reports the chosen language to Go through `App.SetLanguage`, so a
+desktop notification never arrives in a different language from the window that
+triggered it.
 
-**Ne pas fermer puis rouvrir un canal.** Les écouteurs refusent une reconnexion
-immédiate sur le même canal (`EBUSY`). La découverte de canal conserve donc le
-socket de la première connexion réussie au lieu de le refermer.
+## Protocol traps (learned the hard way)
 
-**LDAC et multipoint sont exclusifs.** Le firmware coupe LDAC de lui-même quand le
-multipoint s'active — la bande passante ne suffit pas pour deux liens. L'UI les
-présente comme un choix, pas comme deux bascules indépendantes.
+These are not implementation details: they silently break any client that
+ignores them.
 
-**Le multipoint peut confisquer le canal de contrôle.** Une fois le multipoint
-actif, le second appareil (téléphone avec l'app officielle ouverte) monopolise le
-SPP et tous les canaux disparaissent du scan. L'application le détecte et
-l'explique au lieu de signaler une panne.
+**Never retry a write.** Several `set` commands take effect *without*
+acknowledging (ANC mode, multipoint). Reading the absence of a reply as a
+failure and resending the command replays the side effect — observed as three
+voice prompts for a single intended change. To check a `set` landed: **read the
+state back**.
 
-## Pièges propres à Windows
+**The acknowledgement of a `set` carries the reply opcode of the `get`.**
+Writing `03 11` produces a `83 10` reply, not `83 11`. Waiting on `83 11` hangs
+forever.
 
-**`SOCKADDR_BTH` est packé sur 1 octet.** `ws2bth.h` inclut `pshpack1.h` : la
-structure fait 30 octets et `btAddr` commence à l'offset 2, juste après
-`addressFamily`. Une struct Go équivalente serait alignée naturellement et
-placerait `btAddr` à l'offset 8 — Windows lit alors l'adresse au mauvais endroit
-et rejette tout `connect` par `WSAEADDRNOTAVAIL` (10049), sur tous les canaux et
-quel que soit le mode d'adressage. C'est un échec muet et total, qui ressemble à
-un appareil absent. Le transport sérialise donc la structure à la main.
+**The equaliser follows a different convention.** `0E 02` answers `0F 82` —
+not the "bit 7 on the first byte" rule the rest of the protocol uses. And the
+EQ uses `vendorId 001D` instead of `000A`.
 
-**L'échec d'un `connect` non bloquant passe par `exceptfds`.** Sous POSIX, le
-noyau rend le socket inscriptible dans les deux cas, donc surveiller `writefds`
-suffit ; Winsock, lui, ne signale l'échec que dans `exceptfds`. Ne surveiller que
-`writefds` fait attendre le délai complet à chaque canal fermé — 90 s pour un
-balayage — avant de conclure à tort à un dépassement de délai.
+**Payloads are asymmetric.** Read replies encode scalars as two big-endian
+bytes (`00 64` = 100); writes take one byte.
 
-**Codes d'erreur, mesurés sur un H3 joignable.** `WSAEHOSTDOWN` (10064) désigne
-un canal fermé, pas un appareil absent : les canaux 1 et 12 le renvoient pendant
-que le canal 11 accepte la connexion. `WSAEADDRINUSE` (10048) est l'équivalent de
-l'`EBUSY` de Linux — même canal 10 occupé. `WSAEADDRNOTAVAIL` (10049) sur *tous*
-les canaux signifie que l'appareil est appairé mais pas connecté : « appairé » ne
-suffit pas, Windows doit avoir établi le lien.
+**A settle delay is mandatory.** A command sent less than ~600 ms after the
+RFCOMM link comes up gets no reply. Without that delay, reads look random.
 
-**La notification de batterie faible ne fonctionne pas.** `notifyLowBattery`
-appelle `notify-send`, absent de Windows ; l'alerte reste visible dans
-l'application seulement.
+**Do not close then reopen a channel.** The earbuds refuse an immediate
+reconnection on the same channel (`EBUSY`). Channel discovery therefore keeps
+the socket of the first successful connection instead of closing it.
 
-## Statut de vérification
+**LDAC and multipoint are exclusive.** The firmware drops LDAC by itself when
+multipoint comes on — there is not enough bandwidth for two links. The UI
+presents them as a choice, not as two independent toggles.
 
-Tout est confirmé sur le fil **sauf** ce qui est marqué « non vérifié » dans
-l'interface :
+**Multipoint can confiscate the control channel.** Once multipoint is on, the
+second device (a phone with the official app open) monopolises SPP and every
+channel disappears from the scan. The application detects this and explains it
+instead of reporting a failure.
 
-- **écriture** du mapping tactile (la lecture, elle, est validée) ;
-- **mode debug tactile** (`CUSTOMIZE_TOUCH_DEMO`), déduit de l'app Android.
+## Windows-specific traps
 
-Le reste — ANC, sous-modes, transparence, batteries, firmware, LDAC, multipoint,
-LE Audio, mode jeu, désactivation tactile, invites vocales, égaliseur — a été
-exercé en lecture et, quand c'était applicable, en écriture avec vérification
-audible.
+**`SOCKADDR_BTH` is packed to 1 byte.** `ws2bth.h` includes `pshpack1.h`: the
+struct is 30 bytes and `btAddr` starts at offset 2, right after
+`addressFamily`. An equivalent Go struct would be naturally aligned and put
+`btAddr` at offset 8 — Windows then reads the address from the wrong place and
+rejects every `connect` with `WSAEADDRNOTAVAIL` (10049), on every channel and
+whatever the addressing mode. It is a silent, total failure that looks like an
+absent device. The transport therefore serialises the struct by hand.
 
-## Fonctions absentes du H3
+**A failed non-blocking `connect` reports through `exceptfds`.** On POSIX the
+kernel makes the socket writable either way, so watching `writefds` is enough;
+Winsock only signals the failure in `exceptfds`. Watching `writefds` alone
+makes every closed channel wait out the full timeout — 90 s for one sweep —
+before wrongly concluding a timeout.
 
-Détectées automatiquement au rafraîchissement et grisées dans l'interface :
-détection intra-auriculaire, effet lumineux, mode cinéma, son panoramique, EQ
-dynamique, basses dynamiques, Dolby, effet spatial, volume par oreille, volume
-personnalisé, volume adaptatif, évacuation d'eau, détection de chute, mode privé.
+**Error codes, measured against a reachable H3.** `WSAEHOSTDOWN` (10064) means
+a closed channel, not an absent device: channels 1 and 12 return it while
+channel 11 accepts the connection. `WSAEADDRINUSE` (10048) is the equivalent of
+Linux's `EBUSY` — same busy channel 10. `WSAEADDRNOTAVAIL` (10049) on *every*
+channel means the device is paired but not connected: "paired" is not enough,
+Windows must have established the link.
 
-D'autres modèles SoundPEATS partageant ce protocole devraient les exposer :
-l'application interroge chaque fonction et n'affiche que ce qui répond.
+**Low-battery notifications do not work.** `notifyLowBattery` calls
+`notify-send`, which does not exist on Windows; the alert stays visible inside
+the application only.
+
+## Verification status
+
+Everything is confirmed on the wire **except** what the interface marks
+"unverified":
+
+- **writing** the touch mapping (reading it is validated);
+- the **touch debug mode** (`CUSTOMIZE_TOUCH_DEMO`), inferred from the Android
+  app.
+
+The rest — ANC, sub-modes, transparency, batteries, firmware, LDAC, multipoint,
+LE Audio, game mode, touch lockout, voice prompts, equaliser — was exercised on
+reads and, where applicable, on writes with audible verification.
+
+## Features absent from the H3
+
+Detected automatically on refresh and dimmed in the interface: in-ear
+detection, light effect, movie mode, panoramic sound, dynamic EQ, dynamic bass,
+Dolby, spatial effect, per-ear volume, personalised volume, adaptive volume,
+water drain, fall detection, privacy mode.
+
+Other SoundPEATS models sharing this protocol should expose them: the
+application queries every feature and only shows what answers.
