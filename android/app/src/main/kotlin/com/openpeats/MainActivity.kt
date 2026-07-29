@@ -84,12 +84,17 @@ fun App(vm: DeviceViewModel = viewModel()) {
         Text("OpenPeats", fontSize = 26.sp, fontWeight = FontWeight.Bold)
 
         if (!granted) {
-            Card { Text("Autorisation Bluetooth requise.", Modifier.padding(16.dp)) }
+            Card(Modifier.fillMaxWidth()) {
+                Text("Autorisation Bluetooth requise.", Modifier.padding(16.dp))
+            }
             return@Column
         }
 
         state.error?.let { msg ->
-            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF4A1F1F))) {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF4A1F1F)),
+            ) {
                 Text(msg, Modifier.padding(14.dp), fontSize = 14.sp)
             }
         }
@@ -101,7 +106,7 @@ fun App(vm: DeviceViewModel = viewModel()) {
         }
 
         if (log.isNotEmpty()) {
-            Card {
+            Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text("Journal", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Spacer(Modifier.height(6.dp))
@@ -118,7 +123,7 @@ fun App(vm: DeviceViewModel = viewModel()) {
 private fun DevicePicker(vm: DeviceViewModel, connecting: Boolean) {
     val devices = remember { vm.pairedDevices() }
 
-    Card {
+    Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Écouteurs appairés", fontWeight = FontWeight.Bold)
 
@@ -152,7 +157,7 @@ private fun DevicePicker(vm: DeviceViewModel, connecting: Boolean) {
 
 @Composable
 private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
-    Card {
+    Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -305,7 +310,9 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
 
 @Composable
 private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card {
+    // fillMaxWidth explicite : un Card se dimensionne sur son contenu, donc
+    // une carte ne contenant que des chips serait plus étroite que les autres.
+    Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Spacer(Modifier.height(10.dp))
