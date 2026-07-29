@@ -9,5 +9,12 @@
   "author": {
     "name": "Wasabules",
     "email": "39313803+Wasabules@users.noreply.github.com"
+  },
+  "info": {
+    "companyName": "OpenPeats",
+    "productName": "PeatsAudio",
+    "productVersion": "0.0.0",
+    "copyright": "MIT licensed",
+    "comments": "Open control for SoundPEATS earbuds"
   }
 }
