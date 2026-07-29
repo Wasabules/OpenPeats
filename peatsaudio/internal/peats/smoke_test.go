@@ -2,9 +2,11 @@ package peats
 
 import (
 	"encoding/hex"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- Tests unitaires : pas de matériel requis. ---
@@ -127,6 +129,49 @@ func TestParseMACRejectsGarbage(t *testing.T) {
 		if _, err := ParseMAC(s); err == nil {
 			t.Errorf("ParseMAC(%q) aurait dû échouer", s)
 		}
+	}
+}
+
+// Chute du lien : LDAC, multipoint et LE Audio font redémarrer les écouteurs.
+// Le readLoop ferme alors `frames`, et une réception sur un canal fermé réussit
+// toujours — drain() doit s'en apercevoir au lieu de boucler sans fin.
+func TestDrainReturnsOnClosedChannel(t *testing.T) {
+	c := &Client{frames: make(chan Frame, 4)}
+	c.frames <- Frame{Command: CmdBatteryLeft}
+	close(c.frames)
+
+	done := make(chan struct{})
+	go func() {
+		c.drain()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("drain() boucle sur un canal fermé : l'application se figerait")
+	}
+}
+
+// Après une chute du lien, les échanges doivent échouer immédiatement plutôt
+// que d'attendre un délai qui ne viendra jamais.
+func TestExchangesFailFastAfterLoss(t *testing.T) {
+	c := &Client{frames: make(chan Frame), stopped: make(chan struct{})}
+	c.lost = true
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Get(CmdBatteryLeft)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrNotConnected) {
+			t.Fatalf("Get après perte du lien = %v, attendu ErrNotConnected", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Get reste bloqué après la perte du lien")
 	}
 }
 

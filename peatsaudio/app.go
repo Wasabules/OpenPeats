@@ -68,6 +68,11 @@ type App struct {
 	// pas répéter la notification à chaque sondage.
 	notified map[string]bool
 
+	// wantConnected distingue une chute de lien subie d'une déconnexion
+	// demandée : la reconnexion automatique ne doit pas contrarier un
+	// utilisateur qui vient de cliquer sur « Déconnecter ».
+	wantConnected bool
+
 	monitorStop chan struct{}
 }
 
@@ -104,6 +109,16 @@ func (a *App) emit(event string, data ...any) {
 // log pousse une ligne dans la console de l'UI.
 func (a *App) log(format string, args ...any) {
 	a.emit("log", fmt.Sprintf(format, args...))
+}
+
+// emitFrame diffuse une trame vers la console de l'UI. Nommée plutôt
+// qu'anonyme, pour être rebranchée à l'identique après une reconnexion.
+func (a *App) emitFrame(f peats.Frame) {
+	a.emit("frame", map[string]any{
+		"cmd":     f.Command.String(),
+		"payload": strings.ToUpper(hex.EncodeToString(f.Payload)),
+		"ts":      time.Now().Format("15:04:05.000"),
+	})
 }
 
 func (a *App) pushState() {
@@ -148,13 +163,11 @@ func (a *App) Connect(mac string) string {
 	}
 
 	// Toutes les trames sont diffusées vers le journal de l'UI.
-	cl.OnFrame = func(f peats.Frame) {
-		a.emit("frame", map[string]any{
-			"cmd":     f.Command.String(),
-			"payload": strings.ToUpper(hex.EncodeToString(f.Payload)),
-			"ts":      time.Now().Format("15:04:05.000"),
-		})
-	}
+	cl.OnFrame = a.emitFrame
+
+	// Plusieurs réglages font redémarrer les écouteurs : sans cela, la chute du
+	// lien passerait inaperçue et l'interface resterait figée sur un état mort.
+	cl.OnDisconnect = a.handleDisconnect
 
 	a.mu.Lock()
 	a.client = cl
@@ -162,6 +175,7 @@ func (a *App) Connect(mac string) string {
 	a.state.MAC = mac
 	a.state.Channel = int(cl.Channel())
 	a.notified = map[string]bool{}
+	a.wantConnected = true
 	a.mu.Unlock()
 
 	a.log("Connecté sur le canal RFCOMM %d.", cl.Channel())
@@ -191,9 +205,87 @@ func (a *App) Disconnect() {
 		a.client = nil
 	}
 	a.state.Connected = false
+	a.wantConnected = false
 	a.mu.Unlock()
 	a.log("Déconnecté.")
 	a.pushState()
+}
+
+// ------------------------------------------------------ reprise après reboot
+
+// reconnectDelay laisse aux écouteurs le temps de redémarrer. Une tentative
+// trop précoce échoue et consomme un essai pour rien.
+const (
+	reconnectDelay    = 3 * time.Second
+	reconnectAttempts = 10
+)
+
+// handleDisconnect réagit à une chute du lien qu'on n'a pas demandée.
+//
+// LDAC, le multipoint et LE Audio font redémarrer les écouteurs : le canal de
+// contrôle tombe et ne revient qu'après quelques secondes. Sans cette reprise,
+// l'application restait sur un client mort dont toutes les commandes
+// échouaient, sans jamais l'annoncer.
+func (a *App) handleDisconnect() {
+	a.mu.Lock()
+	dead := a.client
+	if dead == nil { // déconnexion volontaire déjà traitée
+		a.mu.Unlock()
+		return
+	}
+	a.client = nil
+	a.state.Connected = false
+	mac := a.state.MAC
+	retry := a.wantConnected
+	a.mu.Unlock()
+
+	dead.Close() // le socket reste à libérer même si le lien est perdu
+	a.stopMonitor()
+	a.pushState()
+
+	if !retry {
+		a.log("Lien perdu.")
+		return
+	}
+	a.log("Lien perdu — les écouteurs ont redémarré. Reconnexion en cours…")
+	go a.reconnectLoop(mac)
+}
+
+// reconnectLoop retente la connexion pendant le redémarrage des écouteurs.
+func (a *App) reconnectLoop(mac string) {
+	for i := 1; i <= reconnectAttempts; i++ {
+		time.Sleep(reconnectDelay)
+
+		// L'utilisateur a pu se déconnecter ou reconnecter entre-temps.
+		a.mu.RLock()
+		abandon := !a.wantConnected || a.client != nil
+		a.mu.RUnlock()
+		if abandon {
+			return
+		}
+
+		cl, err := peats.Connect(mac, 0)
+		if err != nil {
+			a.log("Reconnexion %d/%d : %s", i, reconnectAttempts, describeConnectError(err))
+			continue
+		}
+
+		cl.OnFrame = a.emitFrame
+		cl.OnDisconnect = a.handleDisconnect
+
+		a.mu.Lock()
+		a.client = cl
+		a.state.Connected = true
+		a.state.Channel = int(cl.Channel())
+		a.mu.Unlock()
+
+		a.log("Reconnecté sur le canal RFCOMM %d.", cl.Channel())
+		a.Refresh()
+		a.startMonitor()
+		return
+	}
+	a.log("Reconnexion impossible après %d essais. Relancez-la à la main.",
+		reconnectAttempts)
 }
 
 // ------------------------------------------------- surveillance des batteries
@@ -539,7 +631,13 @@ func (a *App) SetGameMode(on bool) {
 		func(v bool) { a.state.GameMode = v })
 }
 
+// SetLEAudio bascule LE Audio.
+//
+// Comme LDAC et le multipoint, ce réglage fait redémarrer les écouteurs : le
+// canal de contrôle tombe aussitôt. La reprise est prise en charge par
+// handleDisconnect ; l'échec des relectures qui suivent est donc normal.
 func (a *App) SetLEAudio(on bool) {
+	a.log("Bascule de LE Audio — les écouteurs vont redémarrer.")
 	a.setToggle(peats.CmdLEAudioSet, peats.CmdLEAudioGet, on,
 		func(v bool) { a.state.LEAudio = v })
 }
@@ -594,6 +692,7 @@ func (a *App) SetMultipoint(on bool) {
 		a.log("Activation du multipoint — LDAC va être désactivé par le firmware " +
 			"(bande passante insuffisante sur deux liens).")
 	}
+	a.log("Les écouteurs vont redémarrer ; la reconnexion est automatique.")
 	c.SetBool(peats.CmdMultipointSet, peats.CmdMultipointGet, on)
 	time.Sleep(1200 * time.Millisecond) // reconfiguration des liens
 
@@ -619,6 +718,7 @@ func (a *App) SetLDAC(on bool) {
 	if on {
 		a.log("Activation de LDAC — le multipoint sera désactivé (exclusifs).")
 	}
+	a.log("Les écouteurs vont redémarrer ; la reconnexion est automatique.")
 	c.SetBool(peats.CmdLDACSet, peats.CmdLDACGet, on)
 	time.Sleep(1200 * time.Millisecond)
 

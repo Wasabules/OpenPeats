@@ -29,6 +29,10 @@ type Client struct {
 	channel uint8
 	closed  bool
 
+	// lost signale que le lien est tombé de lui-même. Distinct de closed :
+	// le socket reste à fermer, mais le client n'est plus utilisable.
+	lost bool
+
 	// exMu sérialise les échanges : un seul en vol à la fois.
 	exMu sync.Mutex
 
@@ -38,6 +42,11 @@ type Client struct {
 	// OnFrame reçoit toutes les trames, y compris les notifications
 	// spontanées émises par les écouteurs.
 	OnFrame func(Frame)
+
+	// OnDisconnect est appelé quand le lien tombe sans qu'on l'ait demandé —
+	// typiquement parce que les écouteurs redémarrent, ce que provoquent LDAC,
+	// le multipoint et LE Audio. N'est pas appelé sur un Close() volontaire.
+	OnDisconnect func()
 }
 
 // Connect ouvre une connexion de contrôle. channel = 0 déclenche la découverte.
@@ -82,14 +91,29 @@ func (c *Client) Channel() uint8 { return c.channel }
 func (c *Client) transport() (rfcommConn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed || c.conn == nil {
+	if c.closed || c.lost || c.conn == nil {
 		return nil, ErrNotConnected
 	}
 	return c.conn, nil
 }
 
 func (c *Client) readLoop() {
-	defer close(c.frames)
+	// À la sortie, le client est définitivement inutilisable : on marque la
+	// perte avant de fermer frames, pour que les échanges en cours échouent
+	// par ErrNotConnected plutôt que d'attendre un délai entier.
+	defer func() {
+		c.mu.Lock()
+		voluntary := c.closed
+		c.lost = true
+		c.mu.Unlock()
+
+		close(c.frames)
+
+		if !voluntary && c.OnDisconnect != nil {
+			c.OnDisconnect()
+		}
+	}()
+
 	buf := make([]byte, 1024)
 	var acc []byte
 
@@ -139,10 +163,18 @@ func (c *Client) readLoop() {
 
 // drain vide les trames en attente avant un nouvel échange, pour ne pas
 // confondre une notification ancienne avec la réponse attendue.
+//
+// ⚠ Le test `ok` n'est pas décoratif. Une fois `frames` fermé — ce qui arrive
+// dès que le lien tombe — une réception y réussit toujours immédiatement, donc
+// le `default` n'est plus jamais choisi. Sans ce test, la boucle tourne à
+// l'infini en tenant exMu, et fige l'application entière.
 func (c *Client) drain() {
 	for {
 		select {
-		case <-c.frames:
+		case _, ok := <-c.frames:
+			if !ok {
+				return
+			}
 		default:
 			return
 		}
