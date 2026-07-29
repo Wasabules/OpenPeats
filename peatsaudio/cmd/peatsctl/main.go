@@ -95,6 +95,9 @@ func explain(err error) string {
 	case errors.Is(err, peats.ErrBusy):
 		return "canal de contrôle occupé par un autre appareil — si le multipoint " +
 			"est actif, coupez le Bluetooth sur l'autre appareil"
+	case errors.Is(err, peats.ErrUnreachable):
+		return "écouteurs injoignables — éteints, dans l'étui, ou hors de portée " +
+			"(appairés ne suffit pas : ils doivent être connectés)"
 	case errors.Is(err, peats.ErrNoChannel):
 		return "aucun canal RFCOMM — écouteurs éteints, dans l'étui, ou non appairés"
 	case errors.Is(err, peats.ErrUnsupported):

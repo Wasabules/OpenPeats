@@ -4,7 +4,7 @@ Contrôle libre des écouteurs **SoundPEATS** — ANC, égaliseur, multipoint,
 batteries — sans passer par l'application mobile du constructeur.
 
 Développé et validé sur un **SOUNDPEATS H3** (firmware `S5_20250605_V0.4.9`)
-sous Ubuntu 24.04.
+sous Ubuntu 24.04, puis sous Windows 11 et Android.
 
 > **Projet non officiel.** Aucun lien avec SoundPEATS. Fourni sans garantie.
 
@@ -67,12 +67,20 @@ couche transport change d'un système à l'autre ; la logique est commune.
 |---|---|---|
 | Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | ✅ lecture et écriture validées |
 | Android | `BluetoothSocket` (Kotlin) | ✅ lecture et écriture validées |
-| Windows | Winsock `AF_BTH` | ⚠️ écrit, **jamais exécuté** |
+| Windows | Winsock `AF_BTH` | ✅ lecture et écriture validées |
 | macOS | IOBluetooth | ❌ à faire — voir ci-dessous |
 | iOS | — | 🚫 impossible |
 
 Sur Android, la validation couvre la lecture complète de l'état, le changement
 de mode ANC et l'application d'une courbe d'égaliseur, vérifiés sur un H3.
+
+Sur Windows 11, la validation a été faite avec `peatsctl` sur un H3 : connexion
+sur le canal RFCOMM 11, 9 lectures sur 9 abouties, puis changement de mode ANC
+confirmé par relecture et à l'oreille. Un piège s'y est révélé : `ws2bth.h`
+inclut `pshpack1.h`, donc `SOCKADDR_BTH` est **packé sur 1 octet** — 30 octets,
+`btAddr` à l'offset 2. Une structure alignée naturellement place `btAddr` à
+l'offset 8 et fait rejeter tout `connect` par `WSAEADDRNOTAVAIL`, sur tous les
+canaux.
 
 **macOS** est réalisable mais demande un pont cgo vers IOBluetooth, un
 framework Objective-C à API asynchrone par délégués : il n'y a pas d'API socket

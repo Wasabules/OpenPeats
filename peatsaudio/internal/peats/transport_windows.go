@@ -3,6 +3,7 @@
 package peats
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -31,6 +32,17 @@ const (
 	wsaEWOULDBLOCK  = windows.Errno(10035)
 	wsaETIMEDOUT    = windows.Errno(10060)
 	wsaECONNREFUSED = windows.Errno(10061)
+
+	// WSAEADDRNOTAVAIL : l'appareil est appairé mais pas connecté — étui,
+	// éteint, hors de portée. Arrive de façon synchrone, sur tous les canaux.
+	wsaEADDRNOTAVAIL = windows.Errno(10049)
+	wsaEHOSTUNREACH  = windows.Errno(10065)
+
+	// WSAEHOSTDOWN désigne ici un canal fermé, pas un appareil absent :
+	// mesuré sur un H3 joignable, où les canaux 1 et 12 renvoient 10064
+	// pendant que le canal 11 accepte la connexion. Le traiter comme
+	// « injoignable » ferait avorter le balayage dès le premier canal.
+	wsaEHOSTDOWN = windows.Errno(10064)
 )
 
 var (
@@ -44,13 +56,30 @@ var (
 
 func init() { dialRFCOMM = dialWindows }
 
-// SOCKADDR_BTH. Le champ btAddr est aligné sur 8 octets, d'où 6 octets de
-// remplissage insérés par le compilateur après addressFamily.
-type sockaddrBTH struct {
-	AddressFamily  uint16
-	BtAddr         uint64
-	ServiceClassID [16]byte
-	Port           uint32
+// sockaddrBTHLen est la taille de SOCKADDR_BTH : 30 octets, pas 40.
+//
+// ws2bth.h inclut <pshpack1.h> — la structure est packée sur 1 octet, sans
+// aucun remplissage. Une struct Go équivalente serait alignée naturellement et
+// placerait btAddr à l'offset 8 au lieu de 2 : Windows lirait alors l'adresse
+// au mauvais endroit et rejetterait tout connect par WSAEADDRNOTAVAIL (10049),
+// quel que soit le canal. Diagnostiqué sur un H3, où la version packée se
+// connecte du premier coup.
+const sockaddrBTHLen = 30
+
+// encodeSockaddrBTH sérialise SOCKADDR_BTH à la main, pour ne pas dépendre des
+// règles d'alignement du compilateur Go.
+//
+//	offset 0  addressFamily  uint16
+//	offset 2  btAddr         uint64
+//	offset 10 serviceClassId GUID (16 octets)
+//	offset 26 port           uint32
+func encodeSockaddrBTH(bt uint64, port uint32) [sockaddrBTHLen]byte {
+	var sa [sockaddrBTHLen]byte
+	binary.LittleEndian.PutUint16(sa[0:2], afBTH)
+	binary.LittleEndian.PutUint64(sa[2:10], bt)
+	// serviceClassId reste nul : le canal est désigné par son numéro.
+	binary.LittleEndian.PutUint32(sa[26:30], port)
+	return sa
 }
 
 // fd_set de Winsock : un compteur suivi d'un tableau de handles, et non un
@@ -93,11 +122,7 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 		bt = bt<<8 | uint64(b)
 	}
 
-	sa := sockaddrBTH{
-		AddressFamily: afBTH,
-		BtAddr:        bt,
-		Port:          uint32(channel),
-	}
+	sa := encodeSockaddrBTH(bt, uint32(channel))
 
 	// Passage en non bloquant pour borner l'attente de connexion.
 	nonblocking := uint32(1)
@@ -112,7 +137,7 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 	// LazyProc.Call renvoie déjà l'erreur de GetLastError, qui coïncide avec
 	// WSAGetLastError sur les Windows modernes.
 	r, _, callErr := procConnect.Call(uintptr(sock),
-		uintptr(unsafe.Pointer(&sa)), unsafe.Sizeof(sa))
+		uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
 	if r != 0 {
 		lastErr, _ := callErr.(windows.Errno)
 		if lastErr != wsaEWOULDBLOCK {
@@ -120,16 +145,26 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 			return nil, mapWindowsErr(lastErr)
 		}
 
-		// Connexion en cours : on attend que le socket devienne inscriptible.
-		var w wsaFdSet
+		// Connexion en cours : on attend le verdict de la pile.
+		//
+		// ⚠ Écart avec POSIX, et non un détail : Winsock signale l'ÉCHEC d'un
+		// connect non bloquant dans exceptfds, jamais dans writefds. Le
+		// transport Linux ne surveille que writefds parce que le noyau y rend
+		// le socket inscriptible dans les deux cas ; recopier ce choix ici
+		// ferait attendre le délai entier à chaque canal fermé — 90 s pour un
+		// balayage complet — avant de conclure à tort à ErrTimeout.
+		var w, ex wsaFdSet
 		w.Count = 1
 		w.Array[0] = sock
+		ex.Count = 1
+		ex.Array[0] = sock
 		tv := wsaTimeval{
 			Sec:  int32(timeout / time.Second),
 			Usec: int32((timeout % time.Second) / time.Microsecond),
 		}
 		n, _, _ := procSelect.Call(0, 0,
-			uintptr(unsafe.Pointer(&w)), 0, uintptr(unsafe.Pointer(&tv)))
+			uintptr(unsafe.Pointer(&w)), uintptr(unsafe.Pointer(&ex)),
+			uintptr(unsafe.Pointer(&tv)))
 		if int32(n) <= 0 {
 			windows.Closesocket(sock)
 			return nil, ErrTimeout
@@ -155,12 +190,14 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 
 func mapWindowsErr(e windows.Errno) error {
 	switch e {
-	case wsaECONNREFUSED:
+	case wsaECONNREFUSED, wsaEHOSTDOWN:
 		return ErrRefused
 	case wsaETIMEDOUT:
 		return ErrTimeout
 	case windows.WSAEADDRINUSE, windows.WSAEISCONN:
 		return ErrBusy
+	case wsaEADDRNOTAVAIL, wsaEHOSTUNREACH:
+		return ErrUnreachable
 	default:
 		return e
 	}
@@ -176,6 +213,9 @@ func (c *windowsConn) handle() (windows.Handle, error) {
 }
 
 func (c *windowsConn) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil // &p[0] paniquerait
+	}
 	s, err := c.handle()
 	if err != nil {
 		return 0, err
@@ -190,6 +230,9 @@ func (c *windowsConn) Read(p []byte) (int, error) {
 }
 
 func (c *windowsConn) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
 	s, err := c.handle()
 	if err != nil {
 		return 0, err

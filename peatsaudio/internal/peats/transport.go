@@ -48,6 +48,12 @@ var (
 	// ErrRefused : aucun service n'écoute sur ce canal.
 	ErrRefused = errors.New("canal refusé")
 
+	// ErrUnreachable : l'appareil est appairé mais injoignable — éteint, dans
+	// son étui, ou hors de portée. Distinct d'ErrRefused : ce n'est pas le
+	// canal qui est fermé, c'est l'appareil qui n'est pas là. Aucun canal ne
+	// répondra, le balayage est donc inutile.
+	ErrUnreachable = errors.New("écouteurs injoignables")
+
 	// ErrNoChannel : aucun canal RFCOMM ouvert.
 	ErrNoChannel = errors.New("aucun canal RFCOMM disponible")
 
@@ -95,6 +101,12 @@ func dialAny(addr [6]byte) (rfcommConn, uint8, error) {
 		c, err := dialRFCOMM(addr, ch, 3*time.Second)
 		if err == nil {
 			return c, ch, nil
+		}
+		// L'appareil lui-même est absent : les 29 canaux restants échoueront
+		// de la même façon. On remonte la cause réelle au lieu de la diluer
+		// en « aucun canal disponible ».
+		if errors.Is(err, ErrUnreachable) {
+			return nil, 0, err
 		}
 		if errors.Is(err, ErrBusy) {
 			sawBusy = true

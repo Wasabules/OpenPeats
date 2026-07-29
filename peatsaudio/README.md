@@ -75,6 +75,33 @@ actif, le second appareil (téléphone avec l'app officielle ouverte) monopolise
 SPP et tous les canaux disparaissent du scan. L'application le détecte et
 l'explique au lieu de signaler une panne.
 
+## Pièges propres à Windows
+
+**`SOCKADDR_BTH` est packé sur 1 octet.** `ws2bth.h` inclut `pshpack1.h` : la
+structure fait 30 octets et `btAddr` commence à l'offset 2, juste après
+`addressFamily`. Une struct Go équivalente serait alignée naturellement et
+placerait `btAddr` à l'offset 8 — Windows lit alors l'adresse au mauvais endroit
+et rejette tout `connect` par `WSAEADDRNOTAVAIL` (10049), sur tous les canaux et
+quel que soit le mode d'adressage. C'est un échec muet et total, qui ressemble à
+un appareil absent. Le transport sérialise donc la structure à la main.
+
+**L'échec d'un `connect` non bloquant passe par `exceptfds`.** Sous POSIX, le
+noyau rend le socket inscriptible dans les deux cas, donc surveiller `writefds`
+suffit ; Winsock, lui, ne signale l'échec que dans `exceptfds`. Ne surveiller que
+`writefds` fait attendre le délai complet à chaque canal fermé — 90 s pour un
+balayage — avant de conclure à tort à un dépassement de délai.
+
+**Codes d'erreur, mesurés sur un H3 joignable.** `WSAEHOSTDOWN` (10064) désigne
+un canal fermé, pas un appareil absent : les canaux 1 et 12 le renvoient pendant
+que le canal 11 accepte la connexion. `WSAEADDRINUSE` (10048) est l'équivalent de
+l'`EBUSY` de Linux — même canal 10 occupé. `WSAEADDRNOTAVAIL` (10049) sur *tous*
+les canaux signifie que l'appareil est appairé mais pas connecté : « appairé » ne
+suffit pas, Windows doit avoir établi le lien.
+
+**La notification de batterie faible ne fonctionne pas.** `notifyLowBattery`
+appelle `notify-send`, absent de Windows ; l'alerte reste visible dans
+l'application seulement.
+
 ## Statut de vérification
 
 Tout est confirmé sur le fil **sauf** ce qui est marqué « non vérifié » dans
