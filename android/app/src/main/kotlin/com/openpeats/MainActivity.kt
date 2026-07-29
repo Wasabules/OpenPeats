@@ -71,9 +71,12 @@ fun App(vm: DeviceViewModel = viewModel()) {
         }
     }
 
+    // targetSdk 35 impose l'affichage bord à bord : sans cet encart, le contenu
+    // passe sous la barre d'état et sous les boutons de navigation.
     Column(
         Modifier
             .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
