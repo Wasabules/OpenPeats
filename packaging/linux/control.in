@@ -1,0 +1,19 @@
+Package: peatsaudio
+Version: @VERSION@
+Section: sound
+Priority: optional
+Architecture: amd64
+Depends: libc6, libgtk-3-0, libwebkit2gtk-4.1-0
+Maintainer: OpenPeats contributors <39313803+Wasabules@users.noreply.github.com>
+Homepage: https://github.com/@REPO@
+Description: Open control for SoundPEATS earbuds
+ PeatsAudio drives SoundPEATS earbuds over the RFCOMM/SPP control protocol:
+ noise cancelling and its sub-modes, a parametric equaliser, LDAC and
+ multipoint, per-earbud and case batteries, game mode, LE Audio and voice
+ prompts.
+ .
+ The interface is English with French included, and follows the system
+ language.
+ .
+ Unofficial project, with no affiliation to SoundPEATS. It exists for
+ interoperability: the manufacturer ships no desktop application.

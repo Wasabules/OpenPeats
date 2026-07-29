@@ -1,0 +1,57 @@
+{
+  "anc.adaptive": "adaptive",
+  "anc.off": "off",
+  "anc.on": "noise cancelling",
+  "anc.transparency": "transparency",
+
+  "ancLevel.adaptive": "adaptive",
+  "ancLevel.indoor": "indoor",
+  "ancLevel.outdoor": "outdoor",
+  "ancLevel.traffic": "traffic",
+
+  "battery.case": "charging case",
+  "battery.left": "left earbud",
+  "battery.right": "right earbud",
+
+  "cli.addrHint": "On Windows: Settings > Bluetooth & devices > your device.",
+  "cli.addrRequired": "Pass the address of the earbuds with -addr.",
+  "cli.connectFailed": "Failed:",
+  "cli.connected": "Connected on RFCOMM channel {channel}.",
+  "cli.connecting": "Connecting to {addr}…",
+  "cli.flag.addr": "Bluetooth MAC address of the earbuds (required)",
+  "cli.flag.anc": "write the ANC mode: 0 off, 1 noise cancelling, 2 transparency",
+  "cli.flag.channel": "RFCOMM channel (0 = auto-discovery)",
+  "cli.flag.lang": "output language (en, fr)",
+  "cli.noResponse": "no response",
+  "cli.readBack": "Read back: {value}",
+  "cli.readBackFailed": "Read back failed:",
+  "cli.readsSucceeded": "{ok}/{total} reads succeeded.",
+  "cli.transportDead": "No read succeeded: the transport is not working.",
+  "cli.writingANC": "Writing ANC mode = {mode}…",
+
+  "err.busy": "control channel held by another device — if multipoint is on, turn Bluetooth off on the other device",
+  "err.noChannel": "no RFCOMM channel — earbuds off, in their case, or not paired",
+  "err.unreachable": "earbuds unreachable — off, in their case, or out of range (paired is not enough: they must be connected)",
+  "err.unsupported": "RFCOMM transport not implemented on this platform",
+
+  "notify.lowBattery.body": "{label} at {percent}%.",
+  "notify.lowBattery.title": "Low battery — SoundPEATS",
+  "notify.test.label": "test",
+  "notify.unavailable": "Desktop notifications unavailable ({error}).",
+
+  "read.ancLevel": "ANC sub-mode",
+  "read.ancMode": "ANC mode",
+  "read.batteryCase": "case battery",
+  "read.batteryLeft": "left battery",
+  "read.batteryRight": "right battery",
+  "read.firmware": "firmware",
+  "read.gameMode": "game mode",
+  "read.ldac": "LDAC",
+  "read.multipoint": "multipoint",
+
+  "value.noneActive": "none active",
+  "value.off": "off",
+  "value.on": "on",
+  "value.percent": "{value}%",
+  "value.unknown": "?"
+}

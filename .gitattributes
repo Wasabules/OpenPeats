@@ -1,0 +1,22 @@
+# Line endings are normalised to LF, in the repository and in every working
+# tree, whatever core.autocrlf says locally.
+#
+# Without this a checkout on Windows produces CRLF files, and gofmt reports
+# every single Go file as unformatted — which is exactly how CI first failed
+# on the windows-latest runner while passing on Linux.
+* text=auto eol=lf
+
+# Windows batch files only work with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaries: never converted, never diffed as text.
+*.png binary
+*.ico binary
+*.woff2 binary
+*.jar binary
+*.apk binary
+*.aab binary
+*.dex binary
+*.btsnoop binary
+probe/peatsprobe binary

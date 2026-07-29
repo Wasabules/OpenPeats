@@ -1,5 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
+  import { t } from "./i18n.js";
+
   const dispatch = createEventDispatcher();
 
   export let busy = false;
@@ -13,30 +15,45 @@
   const Q_MIN = 0.3;
   const Q_MAX = 6;
 
-  // « Finesse de réglage » : jeux de fréquences centrales normalisés.
+  // Granularity: normalised sets of centre frequencies.
   const GRANULARITY = {
     5: [60, 250, 1000, 4000, 12000],
     8: [40, 100, 250, 630, 1600, 4000, 10000, 16000],
     10: [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
   };
 
-  const PRESETS = {
-    Plat: () => bands.map((b) => ({ ...b, gain: 0 })),
-    "Basses +": () =>
-      bands.map((b) => ({ ...b, gain: b.freq <= 250 ? 6 : b.freq <= 500 ? 2 : 0 })),
-    Voix: () =>
-      bands.map((b) => ({
-        ...b,
-        gain: b.freq < 300 ? -3 : b.freq <= 4000 ? 4 : 0,
-      })),
-    "Aigus +": () =>
-      bands.map((b) => ({ ...b, gain: b.freq >= 6000 ? 5 : b.freq >= 3000 ? 2 : 0 })),
-    Loudness: () =>
-      bands.map((b) => ({
-        ...b,
-        gain: b.freq <= 120 ? 6 : b.freq >= 8000 ? 5 : b.freq >= 500 && b.freq <= 2000 ? -2 : 0,
-      })),
-  };
+  // A list rather than an object keyed by name: the display name is a
+  // catalogue key now, so it can no longer double as the identifier.
+  const PRESETS = [
+    { key: "eq.preset.flat", apply: () => bands.map((b) => ({ ...b, gain: 0 })) },
+    {
+      key: "eq.preset.bass",
+      apply: () =>
+        bands.map((b) => ({ ...b, gain: b.freq <= 250 ? 6 : b.freq <= 500 ? 2 : 0 })),
+    },
+    {
+      key: "eq.preset.vocal",
+      apply: () =>
+        bands.map((b) => ({
+          ...b,
+          gain: b.freq < 300 ? -3 : b.freq <= 4000 ? 4 : 0,
+        })),
+    },
+    {
+      key: "eq.preset.treble",
+      apply: () =>
+        bands.map((b) => ({ ...b, gain: b.freq >= 6000 ? 5 : b.freq >= 3000 ? 2 : 0 })),
+    },
+    {
+      key: "eq.preset.loudness",
+      apply: () =>
+        bands.map((b) => ({
+          ...b,
+          gain:
+            b.freq <= 120 ? 6 : b.freq >= 8000 ? 5 : b.freq >= 500 && b.freq <= 2000 ? -2 : 0,
+        })),
+    },
+  ];
 
   let granularity = 8;
   export let masterGain = 0;
@@ -44,8 +61,8 @@
 
   function setGranularity(n) {
     granularity = n;
-    // On conserve l'allure : le gain de chaque nouvelle bande est interpolé
-    // depuis la courbe actuelle.
+    // Keep the shape: the gain of each new band is interpolated from the
+    // current curve.
     const old = bands;
     bands = GRANULARITY[n].map((f) => ({
       freq: f,
@@ -54,8 +71,8 @@
     }));
   }
 
-  function applyPreset(name) {
-    bands = PRESETS[name]();
+  function applyPreset(preset) {
+    bands = preset.apply();
     masterGain = 0;
   }
 
@@ -64,7 +81,7 @@
     masterGain = 0;
   }
 
-  // --- Réponse d'un filtre peaking RBJ, en dB ---
+  // --- Response of an RBJ peaking filter, in dB ---
   function peakingDb(f, b) {
     if (!b.gain) return 0;
     const A = Math.pow(10, b.gain / 40);
@@ -88,7 +105,7 @@
 
   const curveGainAt = (f, bs) => bs.reduce((acc, b) => acc + peakingDb(f, b), 0);
 
-  // --- Géométrie du graphe ---
+  // --- Plot geometry ---
   const W = 660, H = 210, PAD_L = 36, PAD_R = 10, PAD_T = 10, PAD_B = 24;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -112,7 +129,7 @@
     return pts.join(" ");
   })();
 
-  // --- Manipulation directe des points sur la courbe ---
+  // --- Direct manipulation of the points on the curve ---
   let svgEl;
   let dragIndex = -1;
 
@@ -138,8 +155,8 @@
     let gain = Math.round(dbOf(y) * 2) / 2;
     gain = Math.max(GAIN_MIN, Math.min(GAIN_MAX, gain));
 
-    // Déplacement horizontal borné par les bandes voisines, pour garder un
-    // ordre de fréquences croissant.
+    // Horizontal movement is bounded by the neighbouring bands, to keep
+    // frequencies in increasing order.
     let freq = Math.round(fOf(x));
     const lo = dragIndex > 0 ? bands[dragIndex - 1].freq * 1.05 : F_MIN;
     const hi = dragIndex < bands.length - 1 ? bands[dragIndex + 1].freq * 0.95 : F_MAX;
@@ -159,17 +176,17 @@
 <div class="eq">
   <div class="toolbar">
     <div class="group">
-      <span class="faint">Finesse</span>
+      <span class="faint">{$t("eq.granularity")}</span>
       {#each Object.keys(GRANULARITY).map(Number) as n}
         <button class:active={granularity === n} disabled={busy}
-                on:click={() => setGranularity(n)}>{n} bandes</button>
+                on:click={() => setGranularity(n)}>{$t("eq.bands", { count: n })}</button>
       {/each}
     </div>
     <div class="group">
-      {#each Object.keys(PRESETS) as name}
-        <button disabled={busy} on:click={() => applyPreset(name)}>{name}</button>
+      {#each PRESETS as preset}
+        <button disabled={busy} on:click={() => applyPreset(preset)}>{$t(preset.key)}</button>
       {/each}
-      <button disabled={busy} on:click={reset}>Remettre à zéro</button>
+      <button disabled={busy} on:click={reset}>{$t("action.reset")}</button>
     </div>
   </div>
 
@@ -178,7 +195,7 @@
        on:pointerup={onPointerUp}
        on:pointerleave={onPointerUp}
        role="application"
-       aria-label="Courbe de l'égaliseur — faites glisser les points">
+       aria-label={$t("eq.curveLabel")}>
     {#each GRID_DB as db}
       <line x1={PAD_L} x2={W - PAD_R} y1={yOf(db)} y2={yOf(db)}
             stroke={db === 0 ? "#3c4558" : "#212734"} stroke-width="1" />
@@ -210,13 +227,13 @@
           <span class="faint">Q</span>
           <input type="number" min={Q_MIN} max={Q_MAX} step="0.1"
                  bind:value={b.q} disabled={busy}
-                 title="Largeur de la cloche : Q faible = large, Q élevé = étroit" />
+                 title={$t("eq.qTitle")} />
         </div>
 
         <input class="slider" type="range" orient="vertical"
                min={GAIN_MIN} max={GAIN_MAX} step="0.5"
                bind:value={b.gain} disabled={busy}
-               aria-label="Gain à {fmtF(b.freq)} hertz" />
+               aria-label={$t("eq.gainAt", { freq: fmtF(b.freq) })} />
 
         <div class="val" class:zero={b.gain === 0}>
           {b.gain > 0 ? "+" : ""}{b.gain.toFixed(1)}
@@ -228,22 +245,20 @@
 
   <div class="footer">
     <div class="master">
-      <label for="mg">Gain maître <strong>{masterGain > 0 ? "+" : ""}{masterGain.toFixed(1)} dB</strong></label>
+      <label for="mg">
+        {$t("eq.masterGain")}
+        <strong>{masterGain > 0 ? "+" : ""}{masterGain.toFixed(1)} dB</strong>
+      </label>
       <input id="mg" type="range" min={GAIN_MIN} max={GAIN_MAX} step="0.5"
              bind:value={masterGain} disabled={busy} />
     </div>
     <button class="primary" disabled={busy}
             on:click={() => dispatch("apply", { bands, masterGain })}>
-      {busy ? "Application…" : "Appliquer"}
+      {busy ? $t("action.applying") : $t("action.apply")}
     </button>
   </div>
 
-  <p class="faint note">
-    Chaque bande part dans sa propre trame. Faites glisser un point de la courbe
-    pour régler gain et fréquence, ou utilisez les faders. La courbe est calculée
-    localement (filtres peaking RBJ à 48 kHz) : c'est une prévisualisation, pas
-    une mesure du rendu réel des écouteurs.
-  </p>
+  <p class="faint note">{$t("eq.note")}</p>
 </div>
 
 <style>

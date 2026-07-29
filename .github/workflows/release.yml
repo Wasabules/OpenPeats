@@ -1,0 +1,399 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the leading v (e.g. 1.2.3)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.23"
+  NODE_VERSION: "20"
+  JAVA_VERSION: "17"
+
+jobs:
+  # One job resolves the version so the three build jobs cannot disagree about
+  # what they are producing.
+  meta:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      android_code: ${{ steps.v.outputs.android_code }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          # Everything downstream assumes MAJOR.MINOR.PATCH with an optional
+          # pre-release suffix. Android's versionCode in particular has no room
+          # for anything else.
+          if ! [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$version' is not MAJOR.MINOR.PATCH[-prerelease]"
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          suffix="${BASH_REMATCH[4]:-}"
+
+          # Monotonic and readable: 1.2.3 -> 10203. Minor and patch are capped
+          # at 99, which the regex above cannot enforce.
+          if [ "$minor" -gt 99 ] || [ "$patch" -gt 99 ]; then
+            echo "::error::minor and patch must each stay below 100 for the Android versionCode"
+            exit 1
+          fi
+          code=$(( major * 10000 + minor * 100 + patch ))
+
+          prerelease=false
+          [ -n "$suffix" ] && prerelease=true
+
+          echo "version=$version"        >> "$GITHUB_OUTPUT"
+          echo "android_code=$code"      >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease"  >> "$GITHUB_OUTPUT"
+          echo "Building $version (Android versionCode $code, prerelease=$prerelease)"
+
+  linux:
+    name: Linux
+    needs: meta
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: peatsaudio/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: peatsaudio/frontend/package-lock.json
+
+      # Ubuntu 24.04 dropped webkit2gtk-4.0, hence the 4.1 packages and the
+      # webkit2_41 build tag below. The resulting binary needs
+      # libwebkit2gtk-4.1-0 at runtime, which the .deb declares.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails
+        working-directory: peatsaudio
+        run: |
+          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+          go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Stamp the version
+        working-directory: peatsaudio
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "$VERSION" '.info.productVersion = $v' wails.json > "$tmp"
+          mv "$tmp" wails.json
+
+      - name: Build
+        working-directory: peatsaudio
+        run: wails build -tags webkit2_41 -clean -platform linux/amd64
+
+      - name: Build peatsctl
+        working-directory: peatsaudio
+        run: CGO_ENABLED=0 go build -trimpath -o build/bin/peatsctl ./cmd/peatsctl
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          bin=$PWD/peatsaudio/build/bin
+          # Absolute: the staging steps below cd elsewhere, and a relative
+          # output path would silently land in the wrong directory.
+          out=$PWD/dist
+          mkdir -p "$out"
+
+          # --- tarball: the binaries plus the documents a user needs ---
+          stage=$(mktemp -d)/peatsaudio-$VERSION-linux-amd64
+          mkdir -p "$stage"
+          cp "$bin/peatsaudio" "$bin/peatsctl" "$stage/"
+          cp README.md README.fr.md LICENSE "$stage/"
+          tar -czf "$out/peatsaudio-$VERSION-linux-amd64.tar.gz" \
+              -C "$(dirname "$stage")" "$(basename "$stage")"
+
+          # --- .deb ---
+          root=$(mktemp -d)
+          install -Dm755 "$bin/peatsaudio" "$root/usr/bin/peatsaudio"
+          install -Dm755 "$bin/peatsctl"   "$root/usr/bin/peatsctl"
+          install -Dm644 packaging/linux/peatsaudio.desktop \
+              "$root/usr/share/applications/peatsaudio.desktop"
+          install -Dm644 peatsaudio/build/appicon.png \
+              "$root/usr/share/icons/hicolor/512x512/apps/peatsaudio.png"
+          install -Dm644 LICENSE "$root/usr/share/doc/peatsaudio/copyright"
+
+          mkdir -p "$root/DEBIAN"
+          sed -e "s|@VERSION@|$VERSION|" \
+              -e "s|@REPO@|$GITHUB_REPOSITORY|" \
+              packaging/linux/control.in > "$root/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "$root" \
+              "$out/peatsaudio_${VERSION}_amd64.deb"
+
+          cp "$bin/peatsctl" "$out/peatsctl-$VERSION-linux-amd64"
+          ls -lh "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    needs: meta
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: peatsaudio/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: peatsaudio/frontend/package-lock.json
+
+      # The runner image ships NSIS, but that is an image detail rather than a
+      # guarantee — installing it when absent keeps the workflow reproducible
+      # on a self-hosted runner.
+      - name: Ensure NSIS is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+            echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+          }
+
+      - name: Install Wails
+        shell: bash
+        working-directory: peatsaudio
+        run: |
+          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+          go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Stamp the version
+        shell: bash
+        working-directory: peatsaudio
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "$VERSION" '.info.productVersion = $v' wails.json > "$tmp"
+          mv "$tmp" wails.json
+
+      # -nsis also produces the portable exe, so one invocation covers both
+      # artefacts.
+      - name: Build
+        shell: bash
+        working-directory: peatsaudio
+        run: wails build -clean -platform windows/amd64 -nsis
+
+      - name: Build peatsctl
+        shell: bash
+        working-directory: peatsaudio
+        run: CGO_ENABLED=0 go build -trimpath -o build/bin/peatsctl.exe ./cmd/peatsctl
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin=$PWD/peatsaudio/build/bin
+          # Absolute: 7z runs from the staging directory below.
+          out=$PWD/dist
+          mkdir -p "$out"
+
+          stage=$(mktemp -d)/peatsaudio-$VERSION-windows-amd64
+          mkdir -p "$stage"
+          cp "$bin/peatsaudio.exe" "$bin/peatsctl.exe" "$stage/"
+          cp README.md README.fr.md LICENSE "$stage/"
+          (cd "$(dirname "$stage")" && \
+            7z a -tzip "$out/peatsaudio-$VERSION-windows-amd64.zip" \
+                "$(basename "$stage")")
+
+          # Wails names the installer after the project, not the version.
+          installer=$(find "$bin" -name '*installer*.exe' -print -quit)
+          if [ -z "$installer" ]; then
+            echo "::error::NSIS installer not produced"
+            exit 1
+          fi
+          cp "$installer" "$out/peatsaudio-$VERSION-windows-amd64-installer.exe"
+
+          cp "$bin/peatsctl.exe" "$out/peatsctl-$VERSION-windows-amd64.exe"
+          ls -lh "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  android:
+    name: Android
+    needs: meta
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      VERSION_CODE: ${{ needs.meta.outputs.android_code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x android/gradlew
+
+      # Signing is optional: a fork with no secrets still gets an unsigned APK
+      # out of this workflow rather than a failed run.
+      - name: Prepare the signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — publishing an unsigned APK"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          args=(
+            --no-daemon
+            -Popenpeats.versionName="$VERSION"
+            -Popenpeats.versionCode="$VERSION_CODE"
+          )
+          if [ "${{ steps.signing.outputs.available }}" = "true" ]; then
+            args+=(
+              -Popenpeats.keystore="$RUNNER_TEMP/keystore.jks"
+              -Popenpeats.keystorePassword="$KEYSTORE_PASSWORD"
+              -Popenpeats.keyAlias="$KEY_ALIAS"
+              -Popenpeats.keyPassword="$KEY_PASSWORD"
+            )
+          fi
+          ./gradlew "${args[@]}" :app:assembleRelease :app:bundleRelease
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          out=dist
+          mkdir -p "$out"
+          apk=$(find android/app/build/outputs/apk/release -name '*.apk' -print -quit)
+          aab=$(find android/app/build/outputs/bundle/release -name '*.aab' -print -quit)
+
+          if [ -z "$apk" ]; then
+            echo "::error::no APK produced"
+            exit 1
+          fi
+
+          suffix=""
+          [ "${{ steps.signing.outputs.available }}" = "true" ] || suffix="-unsigned"
+          cp "$apk" "$out/openpeats-$VERSION$suffix.apk"
+          [ -n "$aab" ] && cp "$aab" "$out/openpeats-$VERSION$suffix.aab"
+          ls -lh "$out"
+
+      # The repository .gitignore excludes *.apk to keep the manufacturer's APK
+      # out of git. This one is our own build, uploaded straight from the
+      # runner, so it never passes through git at all.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [meta, linux, windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+
+      - name: Collect artefacts and checksums
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find staging -type f -exec cp {} dist/ \;
+          cd dist
+          sha256sum * > SHA256SUMS
+          echo "--- release contents ---"
+          cat SHA256SUMS
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', env.VERSION) || github.ref_name }}
+          name: PeatsAudio ${{ env.VERSION }}
+          prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/*
+          body: |
+            Open control for SoundPEATS earbuds — see the
+            [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+
+            The interface ships in English and French and follows the system
+            language; the desktop app also has a picker in its top bar.
+
+            | Platform | File |
+            |---|---|
+            | Linux (Debian/Ubuntu) | `peatsaudio_${{ env.VERSION }}_amd64.deb` |
+            | Linux (portable) | `peatsaudio-${{ env.VERSION }}-linux-amd64.tar.gz` |
+            | Windows (installer) | `peatsaudio-${{ env.VERSION }}-windows-amd64-installer.exe` |
+            | Windows (portable) | `peatsaudio-${{ env.VERSION }}-windows-amd64.zip` |
+            | Android | `openpeats-${{ env.VERSION }}.apk` |
+
+            The Linux build needs `libwebkit2gtk-4.1-0` (Ubuntu 24.04+,
+            Fedora 39+); the `.deb` declares it. `peatsctl` is a command line
+            tool for checking the transport without a GUI.
+
+            Verify your download against `SHA256SUMS`.

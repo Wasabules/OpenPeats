@@ -28,27 +28,27 @@ import java.util.UUID
 private const val TAG = "OpenPeats"
 
 /**
- * Client de contrôle sur RFCOMM/SPP.
+ * Control client over RFCOMM/SPP.
  *
- * Les réglages temporels viennent de mesures réelles ; voir PROTOCOL.md.
- * Android résout lui-même le canal RFCOMM à partir de l'UUID SPP, ce qui évite
- * le balayage nécessaire sous Linux.
+ * The timings come from real measurements; see PROTOCOL.md. Android resolves
+ * the RFCOMM channel itself from the SPP UUID, which avoids the sweep Linux
+ * needs.
  */
 class RfcommClient private constructor(
     private val socket: BluetoothSocket,
 ) {
     companion object {
-        /** Une commande émise trop tôt après le lien reste sans réponse. */
+        /** A command sent too soon after the link comes up gets no reply. */
         private const val SETTLE_MS = 700L
 
         private const val TIMEOUT_MS = 1500L
         private const val READ_RETRIES = 3
 
         /**
-         * Ouvre la connexion de contrôle.
+         * Opens the control connection.
          *
-         * @throws IOException si les écouteurs sont injoignables, ou si le
-         *   canal est déjà tenu par un autre appareil (multipoint actif).
+         * @throws IOException if the earbuds are unreachable, or if the
+         *   channel is already held by another device (multipoint on).
          */
         @SuppressLint("MissingPermission")
         suspend fun connect(device: BluetoothDevice): RfcommClient =
@@ -57,9 +57,9 @@ class RfcommClient private constructor(
                 val socket = try {
                     device.createRfcommSocketToServiceRecord(uuid)
                 } catch (e: IOException) {
-                    // Repli : certains firmwares n'exposent pas d'enregistrement
-                    // SDP exploitable. Le canal 11 est celui observé sur le H3.
-                    Log.w(TAG, "SDP indisponible, repli sur le canal fixe", e)
+                    // Fallback: some firmwares expose no usable SDP record.
+                    // Channel 11 is the one observed on the H3.
+                    Log.w(TAG, "SDP unavailable, falling back to the fixed channel", e)
                     fallbackSocket(device, 11)
                 }
 
@@ -70,7 +70,7 @@ class RfcommClient private constructor(
                 c
             }
 
-        /** `createRfcommSocket(int)` est masquée : accès par réflexion. */
+        /** `createRfcommSocket(int)` is hidden: reached by reflection. */
         private fun fallbackSocket(device: BluetoothDevice, channel: Int): BluetoothSocket {
             val m = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
             return m.invoke(device, channel) as BluetoothSocket
@@ -84,7 +84,7 @@ class RfcommClient private constructor(
     @Volatile
     private var closed = false
 
-    /** Reçoit toutes les trames, y compris les notifications spontanées. */
+    /** Receives every frame, spontaneous notifications included. */
     var onFrame: ((Frame) -> Unit)? = null
 
     private fun startReader() {
@@ -96,7 +96,7 @@ class RfcommClient private constructor(
                 val n = try {
                     socket.inputStream.read(buf)
                 } catch (e: IOException) {
-                    if (!closed) Log.w(TAG, "lecture interrompue", e)
+                    if (!closed) Log.w(TAG, "read interrupted", e)
                     break
                 }
                 if (n <= 0) break
@@ -105,7 +105,7 @@ class RfcommClient private constructor(
                 while (true) {
                     val d = Codec.decode(acc, acc.size)
                     if (d.frame == null) {
-                        // Bruit avant le SOF : on le jette.
+                        // Noise before the SOF: drop it.
                         if (d.consumed > 0) acc = acc.copyOfRange(d.consumed, acc.size)
                         break
                     }
@@ -118,7 +118,7 @@ class RfcommClient private constructor(
     }
 
     private fun drain() {
-        while (frames.tryReceive().isSuccess) { /* vide la file */ }
+        while (frames.tryReceive().isSuccess) { /* empty the queue */ }
     }
 
     private suspend fun await(match: (Frame) -> Boolean): Frame? =
@@ -137,8 +137,7 @@ class RfcommClient private constructor(
     }
 
     /**
-     * Lit une valeur. Les lectures sont réessayées : elles sont sans effet
-     * de bord.
+     * Reads a value. Reads are retried: they have no side effects.
      */
     suspend fun get(cmd: Command): Frame? = exchangeLock.withLock {
         val want = cmd.response()
@@ -147,7 +146,7 @@ class RfcommClient private constructor(
             try {
                 write(Codec.encode(cmd))
             } catch (e: IOException) {
-                Log.w(TAG, "échec d'écriture $cmd", e)
+                Log.w(TAG, "write failed $cmd", e)
                 return null
             }
             await { it.command == want }?.let { return it }
@@ -156,15 +155,14 @@ class RfcommClient private constructor(
     }
 
     /**
-     * Écrit une valeur.
+     * Writes a value.
      *
-     * ⚠ Aucune réémission, jamais. Plusieurs `set` prennent effet sans
-     * acquitter (mode ANC, multipoint) ; renvoyer la commande rejouerait
-     * l'effet de bord — observé avec trois invites vocales pour une seule
-     * écriture voulue.
+     * ⚠ Never retried, ever. Several `set` commands take effect without
+     * acknowledging (ANC mode, multipoint); resending one replays the side
+     * effect — observed as three voice prompts for a single intended write.
      *
-     * L'acquittement porte généralement l'opcode de réponse du `get`
-     * correspondant. Son absence n'est pas une erreur : relire l'état.
+     * The acknowledgement generally carries the reply opcode of the matching
+     * `get`. Its absence is not an error: read the state back.
      */
     suspend fun set(setCmd: Command, getCmd: Command, payload: ByteArray): Frame? =
         exchangeLock.withLock {
@@ -172,7 +170,7 @@ class RfcommClient private constructor(
             try {
                 write(Codec.encode(setCmd, payload))
             } catch (e: IOException) {
-                Log.w(TAG, "échec d'écriture $setCmd", e)
+                Log.w(TAG, "write failed $setCmd", e)
                 return null
             }
             val want = getCmd.response()
@@ -184,10 +182,10 @@ class RfcommClient private constructor(
     }
 
     /**
-     * Applique une courbe d'égaliseur, une trame par bande.
+     * Applies an equaliser curve, one frame per band.
      *
-     * La famille EQ utilise son propre identifiant vendeur et répond avec
-     * [Commands.EQ_RESPONSE], pas avec la convention « bit 7 ».
+     * The EQ family uses its own vendor identifier and answers with
+     * [Commands.EQ_RESPONSE], not with the "bit 7" convention.
      */
     suspend fun applyEq(bands: List<EqBand>, masterGain: Double, v1: Boolean) {
         if (bands.isEmpty()) return
@@ -199,10 +197,10 @@ class RfcommClient private constructor(
                 try {
                     write(Codec.encode(cmd, payload, Protocol.VENDOR_EQ))
                 } catch (e: IOException) {
-                    Log.w(TAG, "bande ${i + 1} : échec d'écriture", e)
+                    Log.w(TAG, "band ${i + 1}: write failed", e)
                     return
                 }
-                // L'ack est bref ; son absence n'interrompt pas l'envoi.
+                // The ack is brief; its absence does not stop the send.
                 await { it.command == Commands.EQ_RESPONSE }
                 delay(80)
             }

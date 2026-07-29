@@ -4,23 +4,23 @@ package peats
 
 import "time"
 
-// Plateformes sans transport RFCOMM implémenté.
+// Platforms with no RFCOMM transport implemented.
 //
-// macOS — réalisable, mais pas encore fait. Le RFCOMM y passe par le framework
-// IOBluetooth (Objective-C, API asynchrone à base de délégués) : il faut un
-// pont cgo qui ouvre un IOBluetoothRFCOMMChannel et convertit les rappels du
-// délégué en lectures bloquantes. Voir IOBluetoothDevice
-// -performSDPQuery: puis -openRFCOMMChannelSync:withChannelID:delegate:.
-// Contrairement à Linux et Windows, il n'existe pas d'API socket : le code ne
-// peut pas être écrit en miroir des deux autres transports.
+// macOS — feasible, just not done yet. RFCOMM there goes through the
+// IOBluetooth framework (Objective-C, asynchronous delegate-based API): it
+// needs a cgo bridge that opens an IOBluetoothRFCOMMChannel and turns the
+// delegate callbacks into blocking reads. See IOBluetoothDevice
+// -performSDPQuery: then -openRFCOMMChannelSync:withChannelID:delegate:.
+// Unlike Linux and Windows there is no socket API, so the code cannot be
+// written as a mirror of the other two transports.
 //
-// iOS — hors d'atteinte. Le profil SPP y est réservé aux accessoires certifiés
-// MFi, via le framework ExternalAccessory. Ces écouteurs ne le sont pas.
-// Aucun contournement n'existe côté application.
+// iOS — out of reach. SPP there is reserved for MFi-certified accessories,
+// through the ExternalAccessory framework. These earbuds are not certified.
+// No application-side workaround exists.
 //
-// Android — le noyau est Linux et gère AF_BLUETOOTH, mais SELinux et le modèle
-// de permissions bloquent les sockets Bluetooth bruts depuis le NDK. Le chemin
-// pris en charge est android.bluetooth.BluetoothSocket, côté Java/Kotlin.
+// Android — the kernel is Linux and does support AF_BLUETOOTH, but SELinux
+// and the permission model block raw Bluetooth sockets from the NDK. The
+// supported path is android.bluetooth.BluetoothSocket, on the Kotlin side.
 
 func init() {
 	dialRFCOMM = func([6]byte, uint8, time.Duration) (rfcommConn, error) {

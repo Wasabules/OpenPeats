@@ -1,0 +1,57 @@
+{
+  "anc.adaptive": "adaptatif",
+  "anc.off": "arrêt",
+  "anc.on": "réduction de bruit",
+  "anc.transparency": "transparence",
+
+  "ancLevel.adaptive": "adaptatif",
+  "ancLevel.indoor": "intérieur",
+  "ancLevel.outdoor": "extérieur",
+  "ancLevel.traffic": "trafic",
+
+  "battery.case": "boîtier",
+  "battery.left": "écouteur gauche",
+  "battery.right": "écouteur droit",
+
+  "cli.addrHint": "Sous Windows : Paramètres > Bluetooth et appareils > votre appareil.",
+  "cli.addrRequired": "Indiquez l'adresse des écouteurs avec -addr.",
+  "cli.connectFailed": "Échec :",
+  "cli.connected": "Connecté sur le canal RFCOMM {channel}.",
+  "cli.connecting": "Connexion à {addr}…",
+  "cli.flag.addr": "adresse MAC Bluetooth des écouteurs (obligatoire)",
+  "cli.flag.anc": "écrire le mode ANC : 0 arrêt, 1 réduction de bruit, 2 transparence",
+  "cli.flag.channel": "canal RFCOMM (0 = découverte automatique)",
+  "cli.flag.lang": "langue de sortie (en, fr)",
+  "cli.noResponse": "pas de réponse",
+  "cli.readBack": "Relecture : {value}",
+  "cli.readBackFailed": "Relecture impossible :",
+  "cli.readsSucceeded": "{ok}/{total} lectures abouties.",
+  "cli.transportDead": "Aucune lecture n'a abouti : le transport ne fonctionne pas.",
+  "cli.writingANC": "Écriture du mode ANC = {mode}…",
+
+  "err.busy": "canal de contrôle occupé par un autre appareil — si le multipoint est actif, coupez le Bluetooth sur l'autre appareil",
+  "err.noChannel": "aucun canal RFCOMM — écouteurs éteints, dans l'étui, ou non appairés",
+  "err.unreachable": "écouteurs injoignables — éteints, dans l'étui, ou hors de portée (appairés ne suffit pas : ils doivent être connectés)",
+  "err.unsupported": "transport RFCOMM non implémenté sur cette plateforme",
+
+  "notify.lowBattery.body": "{label} à {percent} %.",
+  "notify.lowBattery.title": "Batterie faible — SoundPEATS",
+  "notify.test.label": "test",
+  "notify.unavailable": "Notification système indisponible ({error}).",
+
+  "read.ancLevel": "sous-mode ANC",
+  "read.ancMode": "mode ANC",
+  "read.batteryCase": "batterie étui",
+  "read.batteryLeft": "batterie gauche",
+  "read.batteryRight": "batterie droite",
+  "read.firmware": "firmware",
+  "read.gameMode": "mode jeu",
+  "read.ldac": "LDAC",
+  "read.multipoint": "multipoint",
+
+  "value.noneActive": "aucun actif",
+  "value.off": "désactivé",
+  "value.on": "activé",
+  "value.percent": "{value} %",
+  "value.unknown": "?"
+}

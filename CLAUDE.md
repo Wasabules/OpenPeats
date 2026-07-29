@@ -1,50 +1,80 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
-## Langue
+## Language
 
-Le dépôt est **intégralement en français** : commentaires, messages d'erreur, noms de
-tests, documentation, messages de commit. Les identifiants de code restent en anglais.
-Toute contribution doit s'y conformer, accents compris.
+The repository is **English first**: comments, error messages, test names,
+documentation and commit messages are all English. Code identifiers are
+English too.
 
-## Commandes
+User-facing strings are **never written inline**. They live in translation
+catalogues, with English as the source language and French shipped alongside:
 
-### Application de bureau (`peatsaudio/`, Wails + Go + Svelte)
+| Surface | Catalogue |
+|---|---|
+| Desktop UI | `peatsaudio/frontend/src/locales/*.json` |
+| Desktop notifications, `peatsctl` | `peatsaudio/internal/i18n/locales/*.json` |
+| Android | `android/app/src/main/res/values*/strings.xml` |
+
+Adding a language must never require touching application code. English is the
+fallback for any key a translation misses. Tests enforce catalogue parity —
+missing keys, extra keys, mismatched `{placeholders}` — so a drifting
+translation fails CI rather than shipping a raw key.
+
+`README.fr.md` is the only translated document. The technical documents
+(`PROTOCOL.md`, `peatsaudio/README.md`) are English only, deliberately:
+duplicating a reference means maintaining two that eventually disagree.
+
+## Commands
+
+### Desktop application (`peatsaudio/`, Wails + Go + Svelte)
 
 ```bash
 cd peatsaudio
-wails build -tags webkit2_41   # Ubuntu 24.04 : le tag est obligatoire (plus de webkit2gtk-4.0)
-wails dev -tags webkit2_41     # développement
+wails build -tags webkit2_41   # Ubuntu 24.04: the tag is mandatory (no more webkit2gtk-4.0)
+wails dev -tags webkit2_41     # development
 ```
 
-Sous Windows et macOS, le tag `webkit2_41` ne s'applique pas : `wails build` suffit.
+On Windows and macOS the `webkit2_41` tag does not apply: `wails build` is
+enough.
 
 ### Tests
 
 ```bash
 cd peatsaudio
-go test ./internal/peats -v                        # unitaires, sans matériel
-go test ./internal/peats -run TestEncodeEQBand -v  # un seul test
-PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v   # nécessite le casque
+go test ./internal/... -v                          # unit tests, no hardware
+go test ./internal/peats -run TestEncodeEQBand -v  # a single test
+PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v   # needs the earbuds
 ```
 
-`go vet ./...` et `go build ./...` **échouent sur un arbre propre** : `main.go` fait
-`//go:embed all:frontend/dist`, et `frontend/dist/` est ignoré par git. Se limiter à
-`go vet ./internal/... ./cmd/...`, ou construire le frontend d'abord
-(`cd frontend && npm install && npm run build`).
+`frontend/dist/.gitkeep` is tracked on purpose: `main.go` does
+`//go:embed all:frontend/dist`, and Wails loads that package to generate its
+bindings *before* it compiles the frontend. With no directory the embed
+pattern matches nothing and `wails build` fails before it starts, on a fresh
+clone. The `all:` prefix is what makes a lone dotfile enough. A vite plugin
+puts the file back after each build, since vite empties `outDir`.
 
-### peatsctl — validation d'un transport sans interface graphique
+On Linux `go vet ./...` still needs the GTK/WebKit headers, because the root
+package reaches the Wails runtime through cgo. `go vet ./internal/... ./cmd/...`
+covers the protocol and the CLI with no system dependency, which is what CI
+runs.
+
+The frontend needs the Wails bindings (`frontend/wailsjs/`, git-ignored):
+`wails generate module` produces them without a full build.
+
+### peatsctl — validating a transport with no GUI
 
 ```bash
 cd peatsaudio
 go build ./cmd/peatsctl
-./peatsctl -addr 98:80:BB:40:D4:ED           # lecture seule
-./peatsctl -addr 98:80:BB:40:D4:ED -anc 1    # écriture du mode ANC, puis relecture
+./peatsctl -addr 98:80:BB:40:D4:ED           # read only
+./peatsctl -addr 98:80:BB:40:D4:ED -anc 1    # write the ANC mode, then read back
 ```
 
-C'est l'outil à utiliser pour valider une plateforme dont le transport n'a jamais
-tourné : il exerce connexion, lecture et écriture sans dépendre de Wails.
+This is the tool for bringing up a platform whose transport has never run: it
+exercises connection, reads and writes without depending on Wails.
 
 ### Android (`android/`, Kotlin + Compose)
 
@@ -54,99 +84,131 @@ ANDROID_HOME=$HOME/Android/Sdk ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### Sonde d'exploration (`probe/`, Linux uniquement)
+### Exploration probe (`probe/`, Linux only)
 
-Module Go indépendant, sans dépendances, sockets `AF_BLUETOOTH` bruts. Lecture seule
-par défaut : toute commande hors liste blanche exige `-allow-write`. Sert à explorer le
-protocole, pas à piloter le casque.
+Standalone Go module, no dependencies, raw `AF_BLUETOOTH` sockets, carrying a
+`//go:build linux` constraint. Read-only by default: any command outside the
+allow-list requires `-allow-write`. It exists to explore the protocol, not to
+drive the earbuds — its output is developer-facing and stays English, with no
+i18n.
+
+### CI/CD (`.github/workflows/`)
+
+`ci.yml` runs on every push and pull request: Go vet and tests on Linux and
+Windows, catalogue parity, frontend build, Android debug build.
+
+`release.yml` runs on a `v*` tag and produces the Linux, Windows and Android
+artefacts plus `SHA256SUMS`. Version numbers come from the tag; nothing is
+hard-coded in the build files.
 
 ## Architecture
 
-### Double implémentation délibérée
+### A deliberate double implementation
 
-Le protocole est écrit **deux fois** — en Go (`peatsaudio/internal/peats/`) et en Kotlin
-(`android/app/src/main/kotlin/com/openpeats/protocol/`) — à partir de la même
-spécification. Ce n'est pas de la dette : ~350 lignes peu coûteuses à porter, et chaque
-plateforme garde son transport natif sans couche de liaison.
+The protocol is written **twice** — in Go (`peatsaudio/internal/peats/`) and in
+Kotlin (`android/app/src/main/kotlin/com/openpeats/protocol/`) — from the same
+specification. This is not debt: ~350 lines that are cheap to port, and each
+platform keeps its native transport with no bridging layer.
 
-**`PROTOCOL.md` est la référence unique.** Toute correction protocolaire doit y être
-portée, puis répercutée dans les deux implémentations. Il distingue systématiquement ce
-qui est *confirmé sur le fil* de ce qui reste *inféré* — préserver cette distinction :
-c'est ce qui rend le document fiable.
+**`PROTOCOL.md` is the single reference.** Any protocol correction must land
+there first, then be carried into both implementations. It consistently
+separates what is *confirmed on the wire* from what remains *inferred* — keep
+that distinction: it is what makes the document trustworthy.
 
-### Couches (Go)
+### Layers (Go)
 
 ```
-internal/peats/protocol.go     trames, opcodes, encodage EQ — pur, sans I/O
-internal/peats/client.go       échanges, retry, découverte de canal — sans OS
-internal/peats/transport.go    interface rfcommConn + var dialRFCOMM
-internal/peats/transport_*.go  une implémentation par OS, choisie par tag de build
-app.go                         état applicatif + méthodes liées à Wails
-frontend/src/                  interface Svelte
+internal/peats/protocol.go     frames, opcodes, EQ encoding — pure, no I/O
+internal/peats/client.go       exchanges, retry, channel discovery — no OS
+internal/peats/transport.go    rfcommConn interface + var dialRFCOMM
+internal/peats/transport_*.go  one implementation per OS, chosen by build tag
+internal/i18n/                 catalogue for what Go renders itself
+message.go                     Message: the {key, args} pairs Go emits
+app.go                         application state + Wails-bound methods
+frontend/src/                  Svelte interface
 ```
 
-`dialRFCOMM` est une variable globale que chaque `transport_*.go` renseigne dans son
-`init()`. Ajouter une plateforme = ajouter un fichier avec le bon tag de build et
-implémenter `rfcommConn` + `isTimeout` ; rien d'autre ne bouge.
-`transport_stub.go` (`//go:build !linux && !windows`) renvoie `ErrUnsupported`.
+`dialRFCOMM` is a global variable each `transport_*.go` fills in from its
+`init()`. Adding a platform means adding a file with the right build tag and
+implementing `rfcommConn` + `isTimeout`; nothing else moves.
+`transport_stub.go` (`//go:build !linux && !windows`) returns `ErrUnsupported`.
 
-### État des transports
+### The i18n boundary between Go and the frontend
 
-| Système | Transport | État |
+Go **never sends display text across the Wails boundary**. `app.go` emits
+`Message{Key, Args}` values and the frontend renders them from its own
+catalogue. Keeping one catalogue per renderer means a string is never
+translated twice in two places that could drift apart.
+
+An argument value starting with `@:` is itself a catalogue key (the
+linked-message convention), which is how a nested reason stays translated
+inside a sentence Go assembled.
+
+Consequence to preserve: switching language re-renders the whole log
+retroactively, because the lines were never text to begin with.
+
+### Transport status
+
+| System | Transport | Status |
 |---|---|---|
-| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | validé sur matériel |
-| Android | `BluetoothSocket` (Kotlin) | validé sur matériel |
-| Windows | Winsock `AF_BTH` | validé sur matériel (lecture + écriture) |
-| macOS | IOBluetooth | à faire — pas d'API socket, exige un pont cgo |
-| iOS | — | impossible (SPP réservé au MFi) |
+| Linux | `AF_BLUETOOTH` / `BTPROTO_RFCOMM` | validated on hardware |
+| Android | `BluetoothSocket` (Kotlin) | validated on hardware |
+| Windows | Winsock `AF_BTH` | validated on hardware (reads + writes) |
+| macOS | IOBluetooth | to do — no socket API, needs a cgo bridge |
+| iOS | — | impossible (SPP reserved for MFi) |
 
-Les transports ne se déduisent pas les uns des autres : écrire le transport
-Windows en miroir de Linux y a introduit deux bugs (structure alignée au lieu
-d'être packée, `select` sans `exceptfds`). Les pièges par plateforme sont
-documentés dans `peatsaudio/README.md`.
+Transports cannot be derived from one another: writing the Windows transport as
+a mirror of Linux introduced two bugs there (an aligned struct instead of a
+packed one, `select` without `exceptfds`). The per-platform traps are
+documented in `peatsaudio/README.md`.
 
-## Pièges du protocole
+## Protocol traps
 
-Ces points cassent silencieusement tout client qui les ignore. Ils sont détaillés dans
-`peatsaudio/README.md` et `PROTOCOL.md` §7.
+These silently break any client that ignores them. They are detailed in
+`peatsaudio/README.md` and `PROTOCOL.md` section 7.
 
-- **Ne jamais réessayer une écriture.** Plusieurs `set` prennent effet *sans* acquitter
-  (mode ANC, multipoint). Renvoyer la commande rejoue l'effet de bord — trois invites
-  vocales pour un seul changement voulu. Pour vérifier qu'un `set` a pris : **relire**.
-  Les `get`, eux, sont réessayés (3 fois) : ils sont sans effet de bord et les réponses
-  sont intermittentes.
-- **L'ack d'un `set` porte l'opcode de réponse du `get`.** `03 11` répond `83 10`, pas
-  `83 11`. Attendre `83 11` bloque indéfiniment.
-- **L'EQ échappe aux conventions générales** : `0E 02` répond `0F 82` (et non `8E 02`),
-  et utilise `vendorId 001D` au lieu de `000A`.
-- **Payloads asymétriques** : les réponses encodent les scalaires sur 2 octets
-  big-endian (`00 64` = 100), les écritures prennent 1 octet.
-- **Délai de stabilisation de ~700 ms** après l'établissement du lien, sinon les
-  premières commandes restent sans réponse.
-- **Ne pas fermer puis rouvrir un canal** : les écouteurs refusent la reconnexion
-  immédiate. `dialAny` conserve donc le socket de la première connexion réussie.
-- **LDAC et multipoint sont exclusifs** (le firmware coupe LDAC lui-même) ; l'UI les
-  présente comme un choix, pas deux bascules.
+- **Never retry a write.** Several `set` commands take effect *without*
+  acknowledging (ANC mode, multipoint). Resending one replays the side effect —
+  three voice prompts for a single intended change. To check a `set` landed:
+  **read back**. `get` commands, by contrast, are retried (3 times): they have
+  no side effects and replies are intermittent.
+- **The ack of a `set` carries the reply opcode of the `get`.** `03 11` answers
+  `83 10`, not `83 11`. Waiting on `83 11` hangs forever.
+- **The EQ escapes the general conventions**: `0E 02` answers `0F 82` (not
+  `8E 02`), and uses `vendorId 001D` instead of `000A`.
+- **Asymmetric payloads**: replies encode scalars as two big-endian bytes
+  (`00 64` = 100), writes take one byte.
+- **A ~700 ms settle delay** after the link comes up, otherwise the first
+  commands get no reply.
+- **Do not close then reopen a channel**: the earbuds refuse an immediate
+  reconnection. `dialAny` therefore keeps the socket of the first successful
+  connection.
+- **LDAC and multipoint are exclusive** (the firmware drops LDAC itself); the
+  UI presents them as a choice, not as two toggles.
 
 ## Conventions
 
-**Détection de fonctions plutôt que liste en dur.** `App.Refresh()` interroge chaque
-fonction et renseigne `State.Supported` ; le frontend grise ce qui ne répond pas. Le H3
-n'expose que 16 commandes sur 31 — d'autres modèles en exposeront d'autres. Ne jamais
-coder en dur les capacités d'un modèle.
+**Feature detection rather than a hard-coded list.** `App.Refresh()` queries
+every feature and fills `State.Supported`; the frontend dims whatever does not
+answer. The H3 only exposes 16 commands out of 31 — other models will expose
+others. Never hard-code a model's capabilities.
 
-**Marquer ce qui n'est pas vérifié.** Le code signale explicitement le non-confirmé
-(écriture du mapping tactile, `CUSTOMIZE_TOUCH_DEMO`), et l'UI le répercute. Conserver
-ces avertissements tant que le matériel ne les a pas tranchés.
+**Mark what is not verified.** The code explicitly flags the unconfirmed
+(writing the touch mapping, `CUSTOMIZE_TOUCH_DEMO`), and the UI carries that
+through. Keep those warnings until hardware settles them.
 
-**Commandes destructives** (`CmdReset`, `CmdReboot`) : jamais émises sans confirmation
-explicite de l'utilisateur.
+**Destructive commands** (`CmdReset`, `CmdReboot`): never sent without explicit
+user confirmation.
 
-## Contrainte légale — stricte
+## Legal constraint — strict
 
-Le projet relève de l'interopérabilité (directive 2009/24/CE art. 6 ; 17 U.S.C.
-§1201(f)). Le dépôt **ne doit jamais contenir** : l'APK officiel ou une partie de
-celui-ci, du code décompilé ou du smali, des ressources ou marques du constructeur.
-Ces éléments sont exclus par `.gitignore` (`*.apk`, `jadx-out/`, `smali-out/`, `*.dex`,
-`*.btsnoop`) et doivent rester locaux. Tout le code publié est écrit indépendamment à
-partir du comportement observé.
+This project falls under interoperability (EU directive 2009/24/EC art. 6;
+17 U.S.C. §1201(f)). The repository **must never contain**: the official APK or
+any part of it, decompiled code or smali, or manufacturer resources and
+trademarks. Those are excluded by `.gitignore` (`*.apk`, `jadx-out/`,
+`smali-out/`, `*.dex`, `*.btsnoop`) and must stay local. All published code is
+written independently from the observed behaviour.
+
+Note the interaction with CI: `.gitignore` excludes `*.apk`, which is about
+*the manufacturer's* APK. The release workflow uploads its own build artefacts
+straight from the runner and never commits them, so the rule holds.

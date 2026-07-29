@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push supersedes the run in flight for the same ref. Only main is
+# exempt: its history is what releases are cut from, so every commit there
+# gets a verdict of its own.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.23"
+  NODE_VERSION: "20"
+  JAVA_VERSION: "17"
+
+jobs:
+  go:
+    name: Go (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both transports are compiled and unit-tested where they actually
+        # run. transport_linux.go and transport_windows.go share no code, and
+        # a build error in one is invisible from the other.
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: peatsaudio
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: peatsaudio/go.sum
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      # Not ./... : main.go embeds frontend/dist, which is git-ignored and not
+      # built in this job. See CLAUDE.md.
+      - name: Vet
+        run: go vet ./internal/... ./cmd/...
+
+      # -race only on Linux: on Windows the detector needs an external C
+      # toolchain that the runner image happens to provide but does not
+      # guarantee, and the concurrency being tested (readLoop, drain) is
+      # platform independent anyway.
+      - name: Test (with race detector)
+        if: runner.os == 'Linux'
+        run: go test -race ./internal/...
+
+      - name: Test
+        if: runner.os != 'Linux'
+        run: go test ./internal/...
+
+      - name: Build peatsctl
+        run: go build ./cmd/peatsctl
+
+  probe:
+    name: Probe (Linux only)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: probe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: probe/go.sum
+
+      # A separate module carrying //go:build linux: raw AF_BLUETOOTH sockets
+      # exist nowhere else.
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - run: go vet ./...
+      - run: go build ./...
+
+  i18n:
+    name: Translation catalogues
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: peatsaudio/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: peatsaudio/frontend/package-lock.json
+
+      # Catalogues drift silently: a missing key renders as a raw identifier
+      # and a mismatched placeholder drops an interpolated value. Neither is
+      # visible in a diff of two JSON files.
+      - name: Go catalogues
+        working-directory: peatsaudio
+        run: go test ./internal/i18n/ -v
+
+      - name: UI catalogues
+        working-directory: peatsaudio/frontend
+        run: |
+          npm ci
+          npm run check:locales
+
+      - name: Android string resources
+        run: python3 .github/scripts/check-android-strings.py
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: peatsaudio/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: peatsaudio/frontend/package-lock.json
+
+      # Binding generation loads the Go packages, and the Wails runtime pulls
+      # in cgo against GTK/WebKit. Without the headers the step fails before
+      # it writes a single file.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      # The Svelte app imports ../wailsjs/go/main/App, which is generated from
+      # the Go bindings and git-ignored. Without this step the build fails on
+      # a missing module — and regenerating it here is also what catches a
+      # frontend call to a method app.go no longer exposes.
+      - name: Generate Wails bindings
+        working-directory: peatsaudio
+        run: |
+          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+          go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
+          "$(go env GOPATH)"/bin/wails generate module
+
+      - name: Build
+        working-directory: peatsaudio/frontend
+        run: |
+          npm ci
+          npm run build
+
+      # Now that frontend/dist exists, the embed directive resolves and the
+      # root package can finally be vetted — the only place app.go itself gets
+      # checked.
+      - name: Vet the root package
+        working-directory: peatsaudio
+        run: go vet -tags webkit2_41 .
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x gradlew
+
+      - name: Assemble debug
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Lint
+        run: ./gradlew --no-daemon :app:lintDebug
+
+      - name: Upload lint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-report
+          path: android/app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore

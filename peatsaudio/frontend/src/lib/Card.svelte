@@ -1,9 +1,11 @@
 <script>
+  import { t } from "./i18n.js";
+
   export let title = "";
   export let hint = "";
-  /** Fonction absente du modèle : la carte est grisée et expliquée. */
+  /** Feature absent from the model: the card is dimmed and explained. */
   export let unsupported = false;
-  /** Comportement déduit de l'analyse mais jamais validé sur le fil. */
+  /** Behaviour inferred from analysis but never validated on the wire. */
   export let unverified = false;
 </script>
 
@@ -11,12 +13,12 @@
   <header>
     <h3>{title}</h3>
     {#if unverified}
-      <span class="badge" title="Déduit de l'app Android, jamais confirmé sur ces écouteurs">
-        non vérifié
+      <span class="badge" title={$t("badge.unverified.title")}>
+        {$t("badge.unverified")}
       </span>
     {/if}
     {#if unsupported}
-      <span class="badge muted">absent de ce modèle</span>
+      <span class="badge muted">{$t("badge.unsupported")}</span>
     {/if}
   </header>
   {#if hint}<p class="hint">{hint}</p>{/if}

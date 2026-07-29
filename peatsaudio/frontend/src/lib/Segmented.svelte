@@ -2,7 +2,7 @@
   import { createEventDispatcher } from "svelte";
   const dispatch = createEventDispatcher();
 
-  /** [{ value, label, note? }] */
+  /** [{ value, label, note? }] — labels arrive already translated. */
   export let options = [];
   export let value = null;
   export let disabled = false;

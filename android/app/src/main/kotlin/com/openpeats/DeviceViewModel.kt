@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.openpeats.protocol.Command
@@ -21,7 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Écouteurs appairés candidats. */
+/** Candidate paired earbuds. */
 data class PairedDevice(val name: String, val address: String)
 
 data class DeviceState(
@@ -54,7 +55,7 @@ data class DeviceState(
     val voicePack: Int = 0,
     val keyMappings: List<KeyMapping> = emptyList(),
 
-    /** Fonctions absentes de ce modèle, détectées au rafraîchissement. */
+    /** Features absent from this model, detected on refresh. */
     val unsupported: Set<String> = emptySet(),
 )
 
@@ -72,14 +73,22 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         (getApplication<Application>()
             .getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
+    /**
+     * Resolves a string resource. Every user-facing string in this ViewModel
+     * goes through here rather than being written inline, so the log and the
+     * error banner follow the system language like the rest of the UI.
+     */
+    private fun str(@StringRes id: Int, vararg args: Any): String =
+        getApplication<Application>().getString(id, *args)
+
     private fun logLine(s: String) {
         _log.update { (it + s).takeLast(200) }
     }
 
     /**
-     * Écouteurs appairés. On ne filtre pas sur le nom : d'autres modèles
-     * SoundPEATS partagent ce protocole, et les fonctions absentes sont de
-     * toute façon détectées à la connexion.
+     * Paired earbuds. Deliberately not filtered by name: other SoundPEATS
+     * models share this protocol, and missing features are detected on
+     * connection anyway.
      */
     @SuppressLint("MissingPermission")
     fun pairedDevices(): List<PairedDevice> =
@@ -90,7 +99,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
     @SuppressLint("MissingPermission")
     fun connect(address: String) {
         val dev: BluetoothDevice = adapter()?.getRemoteDevice(address) ?: run {
-            _state.update { it.copy(error = "Bluetooth indisponible.") }
+            _state.update { it.copy(error = str(R.string.error_bluetooth_unavailable)) }
             return
         }
 
@@ -106,7 +115,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
                         deviceName = dev.name ?: address,
                     )
                 }
-                logLine("Connecté à ${dev.name ?: address}.")
+                logLine(str(R.string.log_connected, dev.name ?: address))
                 refresh()
             } catch (e: Exception) {
                 _state.update {
@@ -116,7 +125,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
                         error = describeError(e),
                     )
                 }
-                logLine("Échec : ${e.message}")
+                logLine(str(R.string.log_failed, e.message.orEmpty()))
             }
         }
     }
@@ -125,11 +134,10 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         val m = e.message.orEmpty()
         return when {
             m.contains("busy", true) || m.contains("in use", true) ->
-                "Canal de contrôle occupé. Si le multipoint est actif, un autre " +
-                    "appareil le monopolise — coupez-y le Bluetooth puis réessayez."
+                str(R.string.error_channel_busy)
             m.contains("read failed", true) || m.contains("closed", true) ->
-                "Les écouteurs ont refusé la connexion. Sortez-les de l'étui et réessayez."
-            else -> "Connexion impossible : $m"
+                str(R.string.error_refused)
+            else -> str(R.string.error_generic, m)
         }
     }
 
@@ -137,10 +145,10 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         client?.close()
         client = null
         _state.update { DeviceState() }
-        logLine("Déconnecté.")
+        logLine(str(R.string.log_disconnected))
     }
 
-    // ------------------------------------------------------------- lectures
+    // ---------------------------------------------------------------- reads
 
     fun refresh() = viewModelScope.launch {
         val c = client ?: return@launch
@@ -204,13 +212,14 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         } ?: run { absent += "keyMappings" }
 
         _state.update { it.copy(busy = false, unsupported = absent) }
-        logLine("Rafraîchi. ${absent.size} fonction(s) absente(s) de ce modèle.")
+        logLine(str(R.string.log_refreshed, absent.size))
     }
 
-    // ------------------------------------------------------------ écritures
+    // --------------------------------------------------------------- writes
     //
-    // Après chaque écriture on relit : plusieurs `set` prennent effet sans
-    // acquitter, et réémettre rejouerait l'effet de bord.
+    // Every write is followed by a read back: several `set` commands take
+    // effect without acknowledging, and resending one would replay the side
+    // effect.
 
     private fun writeThenRead(
         setCmd: Command,
@@ -298,14 +307,14 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         ) { r -> _state.update { it.copy(promptVolume = r) } }
 
     /**
-     * LDAC et multipoint sont exclusifs : le firmware coupe l'un en activant
-     * l'autre, faute de bande passante pour deux liens. On relit donc les deux,
-     * après un délai plus long car les liens se reconfigurent.
+     * LDAC and multipoint are exclusive: the firmware drops one when the other
+     * comes on, for lack of bandwidth over two links. Both are therefore read
+     * back, after a longer delay because the links get reconfigured.
      */
     fun setMultipoint(on: Boolean) = viewModelScope.launch {
         val c = client ?: return@launch
         _state.update { it.copy(busy = true) }
-        if (on) logLine("Activation du multipoint — LDAC va être désactivé par le firmware.")
+        if (on) logLine(str(R.string.log_multipoint_enabling))
         c.setBool(Commands.MULTIPOINT_SET, Commands.MULTIPOINT_GET, on)
         delay(1200)
         c.get(Commands.MULTIPOINT_GET)?.let { f ->
@@ -320,7 +329,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
     fun setLdac(on: Boolean) = viewModelScope.launch {
         val c = client ?: return@launch
         _state.update { it.copy(busy = true) }
-        if (on) logLine("Activation de LDAC — le multipoint sera désactivé (exclusifs).")
+        if (on) logLine(str(R.string.log_ldac_enabling))
         c.setBool(Commands.LDAC_SET, Commands.LDAC_GET, on)
         delay(1200)
         c.get(Commands.LDAC_GET)?.let { f ->
@@ -336,11 +345,11 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         val c = client ?: return@launch
         _state.update { it.copy(busy = true) }
         c.applyEq(bands, masterGain, eqUsesV1())
-        logLine("EQ appliqué : ${bands.size} bande(s).")
+        logLine(str(R.string.log_eq_applied, bands.size))
         _state.update { it.copy(busy = false) }
     }
 
-    /** Reproduit needInParallel() de l'application officielle. */
+    /** Mirrors needInParallel() from the official application. */
     private fun eqUsesV1(): Boolean {
         val fw = _state.value.firmware
         return listOf(

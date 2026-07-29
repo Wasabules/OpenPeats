@@ -11,16 +11,16 @@ import (
 	"unsafe"
 )
 
-// Transport RFCOMM sous Linux : sockets AF_BLUETOOTH natifs du noyau.
-// Aucune dépendance externe, aucun démon à interroger.
+// RFCOMM transport on Linux: native AF_BLUETOOTH kernel sockets.
+// No external dependency, no daemon to talk to.
 //
-// Testé sur Ubuntu 24.04 contre un SOUNDPEATS H3.
+// Tested on Ubuntu 24.04 against a SOUNDPEATS H3.
 
 const btprotoRFCOMM = 3
 
 func init() { dialRFCOMM = dialLinux }
 
-// sockaddr_rc, tel que défini par <bluetooth/rfcomm.h>.
+// sockaddr_rc, as defined by <bluetooth/rfcomm.h>.
 type sockaddrRC struct {
 	Family  uint16
 	Bdaddr  [6]byte
@@ -49,7 +49,7 @@ func dialLinux(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn, 
 		return nil, err
 	}
 
-	// bdaddr est stocké en ordre inverse.
+	// bdaddr is stored in reverse order.
 	var bd [6]byte
 	for i := 0; i < 6; i++ {
 		bd[i] = addr[5-i]
@@ -148,8 +148,8 @@ func (c *linuxConn) Close() error {
 	return syscall.Close(fd)
 }
 
-// isTimeout distingue un dépassement du délai de lecture d'une vraie erreur.
-// EINTR apparaît quand le runtime Go préempte un syscall bloquant.
+// isTimeout tells a read timeout apart from a real error.
+// EINTR shows up when the Go runtime preempts a blocking syscall.
 func isTimeout(err error) bool {
 	return errors.Is(err, syscall.EAGAIN) ||
 		errors.Is(err, syscall.EWOULDBLOCK) ||

@@ -1,11 +1,12 @@
-// peatsctl — outil en ligne de commande pour vérifier le transport RFCOMM.
+// peatsctl — command line tool to check the RFCOMM transport.
 //
-// Sert surtout à valider une plateforme dont le transport n'a jamais été
-// exécuté : il exerce la connexion, la lecture et, si on le demande, une
-// écriture, sans dépendre de l'interface graphique.
+// Mostly used to validate a platform whose transport has never run: it
+// exercises connection, reads and, on request, a write, without depending on
+// the graphical interface.
 //
 //	peatsctl -addr 98:80:BB:40:D4:ED
 //	peatsctl -addr ... -anc 1
+//	peatsctl -addr ... -lang fr
 package main
 
 import (
@@ -15,135 +16,169 @@ import (
 	"os"
 	"strings"
 
+	"peatsaudio/internal/i18n"
 	"peatsaudio/internal/peats"
 )
 
 func main() {
-	addr := flag.String("addr", "", "adresse MAC des écouteurs (obligatoire)")
-	channel := flag.Int("channel", 0, "canal RFCOMM (0 = découverte automatique)")
-	anc := flag.Int("anc", -1, "écrire le mode ANC : 0 arrêt, 1 ANC, 2 transparence")
+	// The locale has to be settled before the flags are declared: usage
+	// strings are rendered at declaration time, so waiting for flag.Parse
+	// would print -h in the system language even when -lang asked otherwise.
+	i18n.SetLocale(i18n.DetectLocale())
+	if tag, ok := localeFromArgs(os.Args[1:]); ok {
+		i18n.SetLocale(tag)
+	}
+
+	lang := flag.String("lang", i18n.Locale(), i18n.T("cli.flag.lang"))
+	addr := flag.String("addr", "", i18n.T("cli.flag.addr"))
+	channel := flag.Int("channel", 0, i18n.T("cli.flag.channel"))
+	anc := flag.Int("anc", -1, i18n.T("cli.flag.anc"))
 	flag.Parse()
 
+	i18n.SetLocale(*lang)
+
 	if strings.TrimSpace(*addr) == "" {
-		fmt.Fprintln(os.Stderr, "Indiquez l'adresse des écouteurs avec -addr.")
-		fmt.Fprintln(os.Stderr, "Sous Windows : Paramètres > Bluetooth > votre appareil.")
+		fmt.Fprintln(os.Stderr, i18n.T("cli.addrRequired"))
+		fmt.Fprintln(os.Stderr, i18n.T("cli.addrHint"))
 		flag.Usage()
 		os.Exit(2)
 	}
 
-	fmt.Printf("Connexion à %s…\n", *addr)
+	fmt.Println(i18n.T("cli.connecting", "addr", *addr))
 	c, err := peats.Connect(*addr, uint8(*channel))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Échec :", explain(err))
+		fmt.Fprintln(os.Stderr, i18n.T("cli.connectFailed"), explain(err))
 		os.Exit(1)
 	}
 	defer c.Close()
-	fmt.Printf("Connecté sur le canal RFCOMM %d.\n\n", c.Channel())
+	fmt.Printf("%s\n\n", i18n.T("cli.connected", "channel", c.Channel()))
 
 	reads := []struct {
-		label string
-		cmd   peats.Command
-		show  func(peats.Frame) string
+		labelKey string
+		cmd      peats.Command
+		show     func(peats.Frame) string
 	}{
-		{"batterie gauche", peats.CmdBatteryLeft, pct},
-		{"batterie droite", peats.CmdBatteryRight, pct},
-		{"batterie étui", peats.CmdBatteryCase, pct},
-		{"firmware", peats.CmdFirmware, func(f peats.Frame) string {
-			if len(f.Payload) > 1 {
-				return strings.TrimRight(string(f.Payload[1:]), "\x00")
-			}
-			return "?"
-		}},
-		{"mode ANC", peats.CmdANCModeGet, ancMode},
-		{"sous-mode ANC", peats.CmdANCLevelGet, active},
-		{"LDAC", peats.CmdLDACGet, onOff},
-		{"multipoint", peats.CmdMultipointGet, onOff},
-		{"mode jeu", peats.CmdGameModeGet, onOff},
+		{"read.batteryLeft", peats.CmdBatteryLeft, pct},
+		{"read.batteryRight", peats.CmdBatteryRight, pct},
+		{"read.batteryCase", peats.CmdBatteryCase, pct},
+		{"read.firmware", peats.CmdFirmware, firmware},
+		{"read.ancMode", peats.CmdANCModeGet, ancMode},
+		{"read.ancLevel", peats.CmdANCLevelGet, activeLevel},
+		{"read.ldac", peats.CmdLDACGet, onOff},
+		{"read.multipoint", peats.CmdMultipointGet, onOff},
+		{"read.gameMode", peats.CmdGameModeGet, onOff},
 	}
 
 	ok := 0
 	for _, r := range reads {
+		label := i18n.T(r.labelKey)
 		f, err := c.Get(r.cmd)
 		if err != nil {
-			fmt.Printf("  %-18s %s  — pas de réponse\n", r.label, r.cmd)
+			fmt.Printf("  %-20s %s  — %s\n", label, r.cmd, i18n.T("cli.noResponse"))
 			continue
 		}
 		ok++
-		fmt.Printf("  %-18s %s  %-22X %s\n", r.label, r.cmd, f.Payload, r.show(f))
+		fmt.Printf("  %-20s %s  %-22X %s\n", label, r.cmd, f.Payload, r.show(f))
 	}
-	fmt.Printf("\n%d/%d lectures abouties.\n", ok, len(reads))
+	fmt.Printf("\n%s\n", i18n.T("cli.readsSucceeded", "ok", ok, "total", len(reads)))
 
 	if *anc >= 0 {
-		fmt.Printf("\nÉcriture du mode ANC = %d…\n", *anc)
-		// Pas de réémission : plusieurs `set` prennent effet sans acquitter.
+		fmt.Printf("\n%s\n", i18n.T("cli.writingANC", "mode", *anc))
+		// Never retried: several `set` commands take effect without
+		// acknowledging, and resending one replays the side effect.
 		c.Set(peats.CmdANCModeSet, peats.CmdANCModeGet, []byte{byte(*anc)})
 		if f, err := c.Get(peats.CmdANCModeGet); err == nil {
-			fmt.Printf("Relecture : %s\n", ancMode(f))
+			fmt.Println(i18n.T("cli.readBack", "value", ancMode(f)))
 		} else {
-			fmt.Println("Relecture impossible :", err)
+			fmt.Fprintln(os.Stderr, i18n.T("cli.readBackFailed"), err)
 		}
 	}
 
 	if ok == 0 {
-		fmt.Fprintln(os.Stderr, "\nAucune lecture n'a abouti : le transport ne fonctionne pas.")
+		fmt.Fprintln(os.Stderr, "\n"+i18n.T("cli.transportDead"))
 		os.Exit(1)
 	}
+}
+
+// localeFromArgs picks -lang out of the raw arguments, in every spelling the
+// flag package accepts, so the locale is known before any flag is declared.
+func localeFromArgs(args []string) (string, bool) {
+	for i, a := range args {
+		switch {
+		case a == "-lang", a == "--lang":
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+		case strings.HasPrefix(a, "-lang="):
+			return strings.TrimPrefix(a, "-lang="), true
+		case strings.HasPrefix(a, "--lang="):
+			return strings.TrimPrefix(a, "--lang="), true
+		}
+	}
+	return "", false
 }
 
 func explain(err error) string {
 	switch {
 	case errors.Is(err, peats.ErrBusy):
-		return "canal de contrôle occupé par un autre appareil — si le multipoint " +
-			"est actif, coupez le Bluetooth sur l'autre appareil"
+		return i18n.T("err.busy")
 	case errors.Is(err, peats.ErrUnreachable):
-		return "écouteurs injoignables — éteints, dans l'étui, ou hors de portée " +
-			"(appairés ne suffit pas : ils doivent être connectés)"
+		return i18n.T("err.unreachable")
 	case errors.Is(err, peats.ErrNoChannel):
-		return "aucun canal RFCOMM — écouteurs éteints, dans l'étui, ou non appairés"
+		return i18n.T("err.noChannel")
 	case errors.Is(err, peats.ErrUnsupported):
-		return "transport RFCOMM non implémenté sur cette plateforme"
+		return i18n.T("err.unsupported")
 	default:
 		return err.Error()
 	}
 }
 
-func pct(f peats.Frame) string { return fmt.Sprintf("%d %%", f.Scalar()) }
+func pct(f peats.Frame) string {
+	return i18n.T("value.percent", "value", f.Scalar())
+}
+
+func firmware(f peats.Frame) string {
+	if len(f.Payload) > 1 {
+		return strings.TrimRight(string(f.Payload[1:]), "\x00")
+	}
+	return i18n.T("value.unknown")
+}
 
 func onOff(f peats.Frame) string {
 	if f.Scalar() == 1 {
-		return "activé"
+		return i18n.T("value.on")
 	}
-	return "désactivé"
+	return i18n.T("value.off")
 }
 
 func ancMode(f peats.Frame) string {
 	switch f.Scalar() {
-	case 0:
-		return "arrêt"
-	case 1:
-		return "réduction de bruit"
-	case 2:
-		return "transparence"
-	case 3:
-		return "adaptatif"
+	case peats.ANCOff:
+		return i18n.T("anc.off")
+	case peats.ANCOn:
+		return i18n.T("anc.on")
+	case peats.ANCTransparency:
+		return i18n.T("anc.transparency")
+	case peats.ANCAdaptive:
+		return i18n.T("anc.adaptive")
 	default:
 		return fmt.Sprintf("0x%02X", f.Scalar())
 	}
 }
 
-func active(f peats.Frame) string {
+func activeLevel(f peats.Frame) string {
 	code, ok := f.ActiveCode()
 	if !ok {
-		return "aucun actif"
+		return i18n.T("value.noneActive")
 	}
-	names := map[byte]string{
-		peats.ANCLevelAdaptive: "adaptatif",
-		peats.ANCLevelIndoor:   "intérieur",
-		peats.ANCLevelOutdoor:  "extérieur",
-		peats.ANCLevelTraffic:  "trafic",
+	keys := map[byte]string{
+		peats.ANCLevelAdaptive: "ancLevel.adaptive",
+		peats.ANCLevelIndoor:   "ancLevel.indoor",
+		peats.ANCLevelOutdoor:  "ancLevel.outdoor",
+		peats.ANCLevelTraffic:  "ancLevel.traffic",
 	}
-	if n, hit := names[code]; hit {
-		return n
+	if key, hit := keys[code]; hit {
+		return i18n.T(key)
 	}
 	return fmt.Sprintf("0x%02X", code)
 }

@@ -1,9 +1,9 @@
-// Package peats implémente le protocole de contrôle des écouteurs SoundPEATS
-// sur RFCOMM/SPP.
+// Package peats implements the SoundPEATS earbud control protocol over
+// RFCOMM/SPP.
 //
-// Tout ce qui suit est dérivé de PROTOCOL.md et validé sur un SOUNDPEATS H3
-// (firmware S5_20250605_V0.4.9). Les constantes marquées « non vérifié » n'ont
-// pas été confirmées sur le fil.
+// Everything here is derived from PROTOCOL.md and validated against a
+// SOUNDPEATS H3 (firmware S5_20250605_V0.4.9). Constants marked "unverified"
+// have not been confirmed on the wire.
 package peats
 
 import (
@@ -12,36 +12,36 @@ import (
 	"fmt"
 )
 
-// En-tête de trame.
+// Frame header.
 //
 //	FF | version | flags | len(payload) | vendorId(2) | command(2) | payload
 const (
 	SOF   byte = 0xFF
 	Flags byte = 0x00
 
-	// L'hôte émet en version 0x04 ; les écouteurs répondent en 0x03.
+	// The host sends version 0x04; the earbuds answer with 0x03.
 	VersionRequest  byte = 0x04
 	VersionResponse byte = 0x03
 
 	HeaderLen = 8
 )
 
-// Identifiants vendeur. L'égaliseur utilise un espace distinct.
+// Vendor identifiers. The equaliser uses a separate space.
 var (
 	VendorDefault = [2]byte{0x00, 0x0A}
 	VendorEQ      = [2]byte{0x00, 0x1D}
 )
 
-// Command est un opcode sur 2 octets.
+// Command is a two-byte opcode.
 type Command [2]byte
 
 func (c Command) String() string { return fmt.Sprintf("%02X%02X", c[0], c[1]) }
 
-// Response renvoie l'opcode de réponse attendu pour une commande de lecture.
-// La règle est « bit 7 armé sur le 1er octet » — elle ne vaut PAS pour l'EQ.
+// Response returns the reply opcode expected for a read command. The rule is
+// "bit 7 set on the first byte" — it does NOT hold for the equaliser.
 func (c Command) Response() Command { return Command{c[0] | 0x80, c[1]} }
 
-// Opcodes. Chaque entrée est notée get / set.
+// Opcodes. Each entry is annotated get / set.
 var (
 	CmdBatteryLeft  = Command{0x03, 0x06}
 	CmdBatteryRight = Command{0x03, 0x07}
@@ -67,14 +67,14 @@ var (
 	CmdLDACSet = Command{0x03, 0x39}
 
 	CmdLEAudioGet = Command{0x03, 0x35}
-	CmdLEAudioSet = Command{0x03, 0x34} // rompt la règle set = get+1
+	CmdLEAudioSet = Command{0x03, 0x34} // breaks the set = get+1 rule
 
 	CmdTouchDisableGet = Command{0x03, 0x12}
 	CmdTouchDisableSet = Command{0x03, 0x13}
 
 	CmdCustomKeyGet   = Command{0x03, 0xAA}
-	CmdCustomKeySet   = Command{0x03, 0xAB} // écriture NON VÉRIFIÉE
-	CmdCustomKeyReset = Command{0x03, 0xAC} // NON VÉRIFIÉ
+	CmdCustomKeySet   = Command{0x03, 0xAB} // write UNVERIFIED
+	CmdCustomKeyReset = Command{0x03, 0xAC} // UNVERIFIED
 
 	CmdPromptVolumeGet = Command{0x03, 0x19}
 	CmdPromptVolumeSet = Command{0x03, 0x20}
@@ -87,19 +87,19 @@ var (
 	CmdEQv1 = Command{0x0E, 0x01}
 	CmdEQv2 = Command{0x0E, 0x02}
 
-	// Destructifs — jamais émis par l'UI sans confirmation explicite.
+	// Destructive — never sent by the UI without explicit confirmation.
 	CmdReset  = Command{0x03, 0x05}
 	CmdReboot = Command{0x03, 0x16}
 )
 
-// EQResponse est l'opcode de réponse de la famille EQ.
-// Confirmé sur le fil : 0E 02 → 0F 82. La convention diffère du reste
-// du protocole (ce n'est PAS 8E 02).
+// EQResponse is the reply opcode of the equaliser family.
+// Confirmed on the wire: 0E 02 → 0F 82. The convention differs from the rest
+// of the protocol (it is NOT 8E 02).
 var EQResponse = Command{0x0F, 0x82}
 
-// Modes ANC (payload de CmdANCModeSet).
+// ANC modes (payload of CmdANCModeSet).
 const (
-	ANCOff          byte = 0x00 // normal, ANC arrêté
+	ANCOff          byte = 0x00 // normal, ANC stopped
 	ANCOn           byte = 0x01
 	ANCTransparency byte = 0x02
 	ANCAdaptive     byte = 0x03
@@ -107,8 +107,8 @@ const (
 	ANCUndefined    byte = 0xFF
 )
 
-// Sous-modes ANC (payload de CmdANCLevelSet).
-// Les 4 valeurs 0x11..0x14 correspondent aux 4 entrées de l'app officielle.
+// ANC sub-modes (payload of CmdANCLevelSet).
+// The four values 0x11..0x14 match the four entries of the official app.
 const (
 	ANCLevelAdaptive byte = 0x11
 	ANCLevelIndoor   byte = 0x12
@@ -116,13 +116,13 @@ const (
 	ANCLevelTraffic  byte = 0x14
 )
 
-// Niveaux de transparence.
+// Transparency levels.
 const (
 	TransparencyVoice    byte = 0x01
 	TransparencyStandard byte = 0x02
 )
 
-// Packs vocaux.
+// Voice prompt packs.
 const (
 	VoiceEN byte = 0x00
 	VoiceZH byte = 0x01
@@ -133,19 +133,19 @@ const (
 	VoiceIT byte = 0x06
 )
 
-// Gestes tactiles.
+// Touch gestures.
 const (
-	GestureClickLeft       byte = 0x01
-	GestureClickRight      byte = 0x02
-	GestureDoubleLeft      byte = 0x03
-	GestureDoubleRight     byte = 0x04
-	GestureTripleLeft      byte = 0x05
-	GestureTripleRight     byte = 0x06
-	GestureLongPressLeft   byte = 0x07
-	GestureLongPressRight  byte = 0x08
+	GestureClickLeft      byte = 0x01
+	GestureClickRight     byte = 0x02
+	GestureDoubleLeft     byte = 0x03
+	GestureDoubleRight    byte = 0x04
+	GestureTripleLeft     byte = 0x05
+	GestureTripleRight    byte = 0x06
+	GestureLongPressLeft  byte = 0x07
+	GestureLongPressRight byte = 0x08
 )
 
-// Actions assignables à un geste.
+// Actions assignable to a gesture.
 const (
 	ActionVolumeUp   byte = 0x01
 	ActionVolumeDown byte = 0x02
@@ -157,7 +157,7 @@ const (
 	ActionAssistant  byte = 0x08
 )
 
-// Frame est une trame du protocole.
+// Frame is a protocol frame.
 type Frame struct {
 	Version byte
 	Flags   byte
@@ -166,7 +166,7 @@ type Frame struct {
 	Payload []byte
 }
 
-// Encode sérialise une trame prête à être émise.
+// Encode serialises a frame ready to be sent.
 func Encode(cmd Command, payload []byte, vendor [2]byte) []byte {
 	out := make([]byte, 0, HeaderLen+len(payload))
 	out = append(out, SOF, VersionRequest, Flags, byte(len(payload)))
@@ -175,13 +175,13 @@ func Encode(cmd Command, payload []byte, vendor [2]byte) []byte {
 	return append(out, payload...)
 }
 
-var errShort = errors.New("trame incomplète")
+var errShort = errors.New("incomplete frame")
 
-// Decode extrait la première trame complète de buf.
-// Retourne la trame, le nombre d'octets consommés, et une erreur si buf ne
-// contient pas encore de trame complète.
+// Decode extracts the first complete frame from buf.
+// It returns the frame, the number of bytes consumed, and an error when buf
+// does not hold a complete frame yet.
 func Decode(buf []byte) (Frame, int, error) {
-	// Resynchronisation sur le SOF : le flux RFCOMM peut contenir du bruit.
+	// Resynchronise on the SOF: the RFCOMM stream can carry noise.
 	off := 0
 	for off < len(buf) && buf[off] != SOF {
 		off++
@@ -206,10 +206,10 @@ func Decode(buf []byte) (Frame, int, error) {
 	return f, off + total, nil
 }
 
-// Scalar extrait la valeur utile d'un payload scalaire.
+// Scalar extracts the useful value out of a scalar payload.
 //
-// Les réponses de lecture encodent les scalaires sur 2 octets big-endian
-// (batterie 00 64 = 100). La valeur tient dans le dernier octet.
+// Read replies encode scalars as two big-endian bytes (battery 00 64 = 100).
+// The value fits in the last byte.
 func (f Frame) Scalar() byte {
 	if len(f.Payload) == 0 {
 		return 0
@@ -217,15 +217,15 @@ func (f Frame) Scalar() byte {
 	return f.Payload[len(f.Payload)-1]
 }
 
-// Pair est une entrée d'une réponse en liste.
+// Pair is one entry of a list reply.
 type Pair struct {
 	Code   byte `json:"code"`
 	Active bool `json:"active"`
 }
 
-// Pairs décode les réponses en liste : un octet de tête, puis des paires
-// (code, actif). Vaut pour le sous-mode ANC, le niveau de transparence et
-// le mapping tactile.
+// Pairs decodes list replies: one header byte, then (code, active) pairs.
+// This holds for the ANC sub-mode, the transparency level and the touch
+// mapping.
 func (f Frame) Pairs() []Pair {
 	p := f.Payload
 	if len(p) < 3 {
@@ -238,7 +238,7 @@ func (f Frame) Pairs() []Pair {
 	return out
 }
 
-// ActiveCode renvoie le code marqué actif dans une réponse en liste.
+// ActiveCode returns the code flagged active in a list reply.
 func (f Frame) ActiveCode() (byte, bool) {
 	for _, pr := range f.Pairs() {
 		if pr.Active {
@@ -248,14 +248,14 @@ func (f Frame) ActiveCode() (byte, bool) {
 	return 0, false
 }
 
-// KeyMapping associe un geste à une action.
+// KeyMapping binds a gesture to an action.
 type KeyMapping struct {
 	Gesture byte `json:"gesture"`
 	Action  byte `json:"action"`
 }
 
-// KeyMappings décode la réponse du mapping tactile (03 AA) : un octet de tête
-// puis des paires (geste, action).
+// KeyMappings decodes the touch mapping reply (03 AA): one header byte, then
+// (gesture, action) pairs.
 func (f Frame) KeyMappings() []KeyMapping {
 	p := f.Payload
 	if len(p) < 3 {
@@ -268,10 +268,10 @@ func (f Frame) KeyMappings() []KeyMapping {
 	return out
 }
 
-// EncodeKeyMappings construit le payload de CmdCustomKeySet.
+// EncodeKeyMappings builds the payload of CmdCustomKeySet.
 //
-// ⚠ NON VÉRIFIÉ sur le fil. La structure reproduit celle observée en lecture
-// (octet de tête puis paires) mais l'écriture n'a jamais été testée.
+// ⚠ UNVERIFIED on the wire. The layout mirrors the one observed on reads
+// (header byte then pairs) but the write has never been tested.
 func EncodeKeyMappings(ms []KeyMapping) []byte {
 	out := make([]byte, 0, 1+2*len(ms))
 	out = append(out, 0x00)
@@ -281,20 +281,20 @@ func EncodeKeyMappings(ms []KeyMapping) []byte {
 	return out
 }
 
-// EQBand est une bande d'égaliseur paramétrique (filtre peaking).
+// EQBand is one band of the parametric equaliser (peaking filter).
 type EQBand struct {
 	Freq int     `json:"freq"` // Hz
 	Gain float64 `json:"gain"` // dB
 	Q    float64 `json:"q"`
 }
 
-// EncodeEQBand construit le payload d'une bande.
+// EncodeEQBand builds the payload of a single band.
 //
-// Facteurs d'échelle validés sur le fil : freq × 3, gain × 60, q × 4096,
-// masterGain × 60 — tous en int16 big-endian.
+// Scale factors validated on the wire: freq × 3, gain × 60, q × 4096,
+// masterGain × 60 — all big-endian int16.
 //
-// v1 compacte total et index dans un seul octet ; v2/v3 les met sur deux.
-// index est 1-based.
+// v1 packs total and index into a single byte; v2/v3 spread them over two.
+// index is 1-based.
 func EncodeEQBand(total, index int, masterGain float64, b EQBand, v1 bool) []byte {
 	var head []byte
 	if v1 {

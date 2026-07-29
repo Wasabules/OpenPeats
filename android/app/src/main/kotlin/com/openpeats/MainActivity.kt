@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,18 +38,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Wire codes mapped to string resources. The codes are protocol constants and
+// never change; only the label follows the system language.
 private val ANC_LEVEL_LABELS = mapOf(
-    AncLevel.ADAPTIVE to "Adaptative",
-    AncLevel.INDOOR to "Intérieur",
-    AncLevel.OUTDOOR to "Extérieur",
-    AncLevel.TRAFFIC to "Trafic",
+    AncLevel.ADAPTIVE to R.string.anc_level_adaptive,
+    AncLevel.INDOOR to R.string.anc_level_indoor,
+    AncLevel.OUTDOOR to R.string.anc_level_outdoor,
+    AncLevel.TRAFFIC to R.string.anc_level_traffic,
 )
 
 private val TRANSPARENCY_LABELS = mapOf(
-    TransparencyLevel.VOICE to "Voix renforcée",
-    TransparencyLevel.STANDARD to "Standard",
+    TransparencyLevel.VOICE to R.string.transparency_voice,
+    TransparencyLevel.STANDARD to R.string.transparency_standard,
 )
 
+// Voice prompt languages are endonyms: they read the same whatever the
+// interface language is, so they stay out of the resources.
 private val VOICE_PACKS = listOf(
     "English", "中文", "Deutsch", "日本語", "Français", "Español", "Italiano",
 )
@@ -71,8 +76,8 @@ fun App(vm: DeviceViewModel = viewModel()) {
         }
     }
 
-    // targetSdk 35 impose l'affichage bord à bord : sans cet encart, le contenu
-    // passe sous la barre d'état et sous les boutons de navigation.
+    // targetSdk 35 forces edge-to-edge display: without this inset the content
+    // slides under the status bar and under the navigation buttons.
     Column(
         Modifier
             .fillMaxSize()
@@ -81,11 +86,15 @@ fun App(vm: DeviceViewModel = viewModel()) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("OpenPeats", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text(
+            stringResource(R.string.app_name),
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+        )
 
         if (!granted) {
             Card(Modifier.fillMaxWidth()) {
-                Text("Autorisation Bluetooth requise.", Modifier.padding(16.dp))
+                Text(stringResource(R.string.permission_required), Modifier.padding(16.dp))
             }
             return@Column
         }
@@ -108,7 +117,11 @@ fun App(vm: DeviceViewModel = viewModel()) {
         if (log.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Journal", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(
+                        stringResource(R.string.section_log),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                    )
                     Spacer(Modifier.height(6.dp))
                     log.takeLast(8).forEach {
                         Text(it, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
@@ -125,14 +138,10 @@ private fun DevicePicker(vm: DeviceViewModel, connecting: Boolean) {
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Écouteurs appairés", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.paired_earbuds), fontWeight = FontWeight.Bold)
 
             if (devices.isEmpty()) {
-                Text(
-                    "Aucun appareil audio appairé. Appairez vos écouteurs dans les " +
-                        "réglages Bluetooth, puis revenez ici.",
-                    fontSize = 13.sp,
-                )
+                Text(stringResource(R.string.no_paired_devices), fontSize = 13.sp)
             }
 
             devices.forEach { d ->
@@ -141,13 +150,15 @@ private fun DevicePicker(vm: DeviceViewModel, connecting: Boolean) {
                     enabled = !connecting,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (connecting) "Connexion…" else "${d.name}  ·  ${d.address}")
+                    Text(
+                        if (connecting) stringResource(R.string.connecting)
+                        else stringResource(R.string.device_entry, d.name, d.address)
+                    )
                 }
             }
 
             Text(
-                "Si le multipoint est actif et qu'un autre appareil tient le canal " +
-                    "de contrôle, la connexion échouera : coupez-y le Bluetooth.",
+                stringResource(R.string.multipoint_hint),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -167,15 +178,19 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
                 Column {
                     Text(s.deviceName, fontWeight = FontWeight.Bold)
                     Text(
-                        s.firmware.ifEmpty { "firmware ?" },
+                        s.firmware.ifEmpty { stringResource(R.string.firmware_unknown) },
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { vm.refresh() }, enabled = !s.busy) { Text("Relire") }
-                    TextButton(onClick = { vm.disconnect() }) { Text("Fermer") }
+                    TextButton(onClick = { vm.refresh() }, enabled = !s.busy) {
+                        Text(stringResource(R.string.action_refresh))
+                    }
+                    TextButton(onClick = { vm.disconnect() }) {
+                        Text(stringResource(R.string.action_close))
+                    }
                 }
             }
 
@@ -183,19 +198,19 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Battery("Gauche", s.batteryLeft)
-                Battery("Droite", s.batteryRight)
-                Battery("Étui", s.batteryCase)
+                Battery(stringResource(R.string.battery_left), s.batteryLeft)
+                Battery(stringResource(R.string.battery_right), s.batteryRight)
+                Battery(stringResource(R.string.battery_case), s.batteryCase)
             }
         }
     }
 
-    Section("Réduction de bruit") {
+    Section(stringResource(R.string.section_anc)) {
         SegmentedRow(
             options = listOf(
-                AncMode.OFF.toInt() to "Arrêt",
-                AncMode.ON.toInt() to "ANC",
-                AncMode.TRANSPARENCY.toInt() to "Transparence",
+                AncMode.OFF.toInt() to stringResource(R.string.anc_off),
+                AncMode.ON.toInt() to stringResource(R.string.anc_on),
+                AncMode.TRANSPARENCY.toInt() to stringResource(R.string.anc_transparency),
             ),
             selected = s.ancMode,
             enabled = !s.busy,
@@ -205,16 +220,15 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
         if (s.ancLevels.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Text(
-                "Sous-mode" + if (s.ancMode != AncMode.ON.toInt())
-                    " — actif en réduction de bruit seulement" else "",
+                if (s.ancMode == AncMode.ON.toInt()) stringResource(R.string.anc_sub_mode)
+                else stringResource(R.string.anc_sub_mode_inactive),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             SegmentedRow(
                 options = s.ancLevels.map { p ->
-                    (p.code.toInt() and 0xFF) to
-                        (ANC_LEVEL_LABELS[p.code] ?: "0x%02X".format(p.code))
+                    (p.code.toInt() and 0xFF) to labelFor(ANC_LEVEL_LABELS[p.code], p.code)
                 },
                 selected = s.ancLevel,
                 enabled = !s.busy && s.ancMode == AncMode.ON.toInt(),
@@ -225,15 +239,14 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
         if (s.transparencyLevels.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Text(
-                "Niveau de transparence",
+                stringResource(R.string.transparency_level),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             SegmentedRow(
                 options = s.transparencyLevels.map { p ->
-                    (p.code.toInt() and 0xFF) to
-                        (TRANSPARENCY_LABELS[p.code] ?: "0x%02X".format(p.code))
+                    (p.code.toInt() and 0xFF) to labelFor(TRANSPARENCY_LABELS[p.code], p.code)
                 },
                 selected = s.transparencyLevel,
                 enabled = !s.busy && s.ancMode == AncMode.TRANSPARENCY.toInt(),
@@ -242,36 +255,45 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
         }
     }
 
-    Section("Codec et connectivité") {
+    Section(stringResource(R.string.section_codec)) {
         Text(
-            "LDAC et multipoint sont exclusifs : le firmware coupe LDAC dès que " +
-                "le multipoint s'active, faute de bande passante pour deux liens.",
+            stringResource(R.string.codec_hint),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        SwitchRow("LDAC", s.ldac, !s.busy && "ldac" !in s.unsupported) { vm.setLdac(it) }
-        SwitchRow("Multipoint", s.multipoint, !s.busy && "multipoint" !in s.unsupported) {
-            vm.setMultipoint(it)
-        }
-        SwitchRow("LE Audio", s.leAudio, !s.busy && "leAudio" !in s.unsupported) {
-            vm.setLeAudio(it)
-        }
+        SwitchRow(
+            stringResource(R.string.toggle_ldac),
+            s.ldac,
+            !s.busy && "ldac" !in s.unsupported,
+        ) { vm.setLdac(it) }
+        SwitchRow(
+            stringResource(R.string.toggle_multipoint),
+            s.multipoint,
+            !s.busy && "multipoint" !in s.unsupported,
+        ) { vm.setMultipoint(it) }
+        SwitchRow(
+            stringResource(R.string.toggle_le_audio),
+            s.leAudio,
+            !s.busy && "leAudio" !in s.unsupported,
+        ) { vm.setLeAudio(it) }
     }
 
-    Section("Modes") {
-        SwitchRow("Mode jeu", s.gameMode, !s.busy && "gameMode" !in s.unsupported) {
-            vm.setGameMode(it)
-        }
+    Section(stringResource(R.string.section_modes)) {
         SwitchRow(
-            "Désactiver le tactile",
+            stringResource(R.string.toggle_game_mode),
+            s.gameMode,
+            !s.busy && "gameMode" !in s.unsupported,
+        ) { vm.setGameMode(it) }
+        SwitchRow(
+            stringResource(R.string.toggle_touch_disabled),
             s.touchDisabled,
             !s.busy && "touchDisabled" !in s.unsupported,
         ) { vm.setTouchDisabled(it) }
     }
 
     if ("voicePack" !in s.unsupported) {
-        Section("Invites vocales") {
+        Section(stringResource(R.string.section_voice_prompts)) {
             SegmentedRow(
                 options = VOICE_PACKS.mapIndexed { i, n -> i to n },
                 selected = s.voicePack,
@@ -279,7 +301,7 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
                 onSelect = { vm.setVoicePack(it) },
             )
             Spacer(Modifier.height(10.dp))
-            Text("Volume — ${s.promptVolume}", fontSize = 12.sp)
+            Text(stringResource(R.string.prompt_volume, s.promptVolume), fontSize = 12.sp)
             var v by remember(s.promptVolume) { mutableFloatStateOf(s.promptVolume.toFloat()) }
             Slider(
                 value = v,
@@ -291,14 +313,14 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
         }
     }
 
-    Section("Égaliseur") {
+    Section(stringResource(R.string.section_equaliser)) {
         EqPanel(busy = s.busy) { bands: List<EqBand>, master: Double ->
             vm.applyEq(bands, master)
         }
     }
 
     if (s.unsupported.isNotEmpty()) {
-        Section("Absent de ce modèle") {
+        Section(stringResource(R.string.section_unsupported)) {
             Text(
                 s.unsupported.sorted().joinToString(" · "),
                 fontSize = 12.sp,
@@ -308,10 +330,19 @@ private fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
     }
 }
 
+/**
+ * Label of a wire code: the translated name when we know the code, the raw
+ * hex value otherwise. Other SoundPEATS models expose codes this build has
+ * never seen, and showing the byte beats showing nothing.
+ */
+@Composable
+private fun labelFor(resId: Int?, code: Byte): String =
+    if (resId != null) stringResource(resId) else "0x%02X".format(code)
+
 @Composable
 private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    // fillMaxWidth explicite : un Card se dimensionne sur son contenu, donc
-    // une carte ne contenant que des chips serait plus étroite que les autres.
+    // Explicit fillMaxWidth: a Card sizes itself on its content, so a card
+    // holding only chips would come out narrower than the others.
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -325,7 +356,11 @@ private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) 
 private fun Battery(label: String, pct: Int) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("$pct%", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        Text(
+            stringResource(R.string.battery_percent, pct),
+            fontSize = 19.sp,
+            fontWeight = FontWeight.Bold,
+        )
         LinearProgressIndicator(
             progress = { pct / 100f },
             modifier = Modifier.width(74.dp),
@@ -377,7 +412,7 @@ private fun SegmentedRow(
     }
 }
 
-/** Enveloppe : FlowRow est encore marqué expérimental dans Compose. */
+/** Wrapper: FlowRow is still marked experimental in Compose. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FlowRowCompat(content: @Composable () -> Unit) {

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  English is the source language. Every other values-<lang>/strings.xml is a
+  translation of this file; Android falls back here key by key, so a partial
+  translation degrades to English rather than crashing on a missing resource.
+-->
+<resources>
+    <string name="app_name">OpenPeats</string>
+
+    <!-- Permissions and connection -->
+    <string name="permission_required">Bluetooth permission required.</string>
+    <string name="paired_earbuds">Paired earbuds</string>
+    <string name="no_paired_devices">No paired audio device. Pair your earbuds in the Bluetooth settings, then come back here.</string>
+    <string name="multipoint_hint">If multipoint is on and another device holds the control channel, connecting will fail: turn Bluetooth off there.</string>
+    <string name="connecting">Connecting…</string>
+    <!-- Device entry: name followed by its MAC address. -->
+    <string name="device_entry">%1$s  ·  %2$s</string>
+
+    <!-- Errors -->
+    <string name="error_bluetooth_unavailable">Bluetooth unavailable.</string>
+    <string name="error_channel_busy">Control channel busy. If multipoint is on, another device is holding it — turn Bluetooth off there and try again.</string>
+    <string name="error_refused">The earbuds refused the connection. Take them out of their case and try again.</string>
+    <string name="error_generic">Cannot connect: %1$s</string>
+
+    <!-- Device header -->
+    <string name="firmware_unknown">firmware ?</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_close">Close</string>
+    <string name="battery_left">Left</string>
+    <string name="battery_right">Right</string>
+    <string name="battery_case">Case</string>
+    <string name="battery_percent">%1$d%%</string>
+
+    <!-- Noise cancelling -->
+    <string name="section_anc">Noise cancelling</string>
+    <string name="anc_off">Off</string>
+    <string name="anc_on">ANC</string>
+    <string name="anc_transparency">Transparency</string>
+    <string name="anc_sub_mode">Sub-mode</string>
+    <string name="anc_sub_mode_inactive">Sub-mode — active in noise cancelling only</string>
+    <string name="anc_level_adaptive">Adaptive</string>
+    <string name="anc_level_indoor">Indoor</string>
+    <string name="anc_level_outdoor">Outdoor</string>
+    <string name="anc_level_traffic">Traffic</string>
+    <string name="transparency_level">Transparency level</string>
+    <string name="transparency_voice">Voice boost</string>
+    <string name="transparency_standard">Standard</string>
+
+    <!-- Codec and connectivity -->
+    <string name="section_codec">Codec and connectivity</string>
+    <string name="codec_hint">LDAC and multipoint are exclusive: the firmware drops LDAC as soon as multipoint comes on, for lack of bandwidth over two links.</string>
+    <string name="toggle_ldac">LDAC</string>
+    <string name="toggle_multipoint">Multipoint</string>
+    <string name="toggle_le_audio">LE Audio</string>
+
+    <!-- Modes -->
+    <string name="section_modes">Modes</string>
+    <string name="toggle_game_mode">Game mode</string>
+    <string name="toggle_touch_disabled">Disable touch controls</string>
+
+    <!-- Voice prompts -->
+    <string name="section_voice_prompts">Voice prompts</string>
+    <string name="prompt_volume">Volume — %1$d</string>
+
+    <!-- Equaliser -->
+    <string name="section_equaliser">Equaliser</string>
+    <string name="eq_presets">Presets</string>
+    <string name="eq_preset_flat">Flat</string>
+    <string name="eq_preset_bass">Bass +</string>
+    <string name="eq_preset_vocal">Vocal</string>
+    <string name="eq_preset_treble">Treble +</string>
+    <string name="eq_preset_loudness">Loudness</string>
+    <string name="eq_granularity">Granularity</string>
+    <string name="eq_bands">%1$d bands</string>
+    <string name="eq_band_detail">Band %1$d — %2$s Hz</string>
+    <string name="eq_gain_db">%1$+.1f dB</string>
+    <string name="eq_bandwidth">Bandwidth  Q %1$.1f</string>
+    <string name="eq_bandwidth_hint">Low Q: wide bell. High Q: narrow correction.</string>
+    <string name="eq_master_gain">Master gain  %1$+.1f dB</string>
+    <string name="action_zero">Zero</string>
+    <string name="action_apply">Apply</string>
+    <string name="action_applying">Applying…</string>
+
+    <!-- Unsupported features -->
+    <string name="section_unsupported">Absent from this model</string>
+
+    <!-- Log -->
+    <string name="section_log">Log</string>
+    <string name="log_connected">Connected to %1$s.</string>
+    <string name="log_disconnected">Disconnected.</string>
+    <string name="log_failed">Failed: %1$s</string>
+    <string name="log_refreshed">Refreshed. %1$d feature(s) absent from this model.</string>
+    <string name="log_multipoint_enabling">Enabling multipoint — the firmware will turn LDAC off.</string>
+    <string name="log_ldac_enabling">Enabling LDAC — multipoint will be turned off (they are exclusive).</string>
+    <string name="log_eq_applied">EQ applied: %1$d band(s).</string>
+</resources>

@@ -16,9 +16,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openpeats.R
 import com.openpeats.protocol.EqBand
 import kotlin.math.PI
 import kotlin.math.cos
@@ -35,32 +37,37 @@ private const val DB_RANGE = 12.0
 private const val GAIN_MIN = -12.0
 private const val GAIN_MAX = 12.0
 
-/** Jeux de fréquences centrales normalisés — « finesse » du réglage. */
+/** Normalised sets of centre frequencies — the "granularity" of the control. */
 private val GRANULARITY = mapOf(
     5 to listOf(60, 250, 1000, 4000, 12000),
     8 to listOf(40, 100, 250, 630, 1600, 4000, 10000, 16000),
     10 to listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000),
 )
 
-/** Mêmes préréglages que la version de bureau. */
-private val PRESETS: Map<String, (List<EqBand>) -> List<EqBand>> = mapOf(
-    "Plat" to { bs -> bs.map { it.copy(gain = 0.0) } },
-    "Basses +" to { bs ->
+/**
+ * A preset: the resource holding its name, and the transform it applies.
+ * Same set as the desktop version.
+ */
+private data class Preset(val labelRes: Int, val apply: (List<EqBand>) -> List<EqBand>)
+
+private val PRESETS = listOf(
+    Preset(R.string.eq_preset_flat) { bs -> bs.map { it.copy(gain = 0.0) } },
+    Preset(R.string.eq_preset_bass) { bs ->
         bs.map {
             it.copy(gain = if (it.freq <= 250) 6.0 else if (it.freq <= 500) 2.0 else 0.0)
         }
     },
-    "Voix" to { bs ->
+    Preset(R.string.eq_preset_vocal) { bs ->
         bs.map {
             it.copy(gain = if (it.freq < 300) -3.0 else if (it.freq <= 4000) 4.0 else 0.0)
         }
     },
-    "Aigus +" to { bs ->
+    Preset(R.string.eq_preset_treble) { bs ->
         bs.map {
             it.copy(gain = if (it.freq >= 6000) 5.0 else if (it.freq >= 3000) 2.0 else 0.0)
         }
     },
-    "Loudness" to { bs ->
+    Preset(R.string.eq_preset_loudness) { bs ->
         bs.map {
             it.copy(
                 gain = when {
@@ -74,7 +81,7 @@ private val PRESETS: Map<String, (List<EqBand>) -> List<EqBand>> = mapOf(
     },
 )
 
-/** Réponse d'un filtre peaking RBJ, en dB, à la fréquence f. */
+/** Response of an RBJ peaking filter, in dB, at frequency f. */
 private fun peakingDb(f: Double, b: EqBand): Double {
     if (b.gain == 0.0) return 0.0
     val a = 10.0.pow(b.gain / 40.0)
@@ -111,8 +118,8 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
     fun setGranularity(n: Int) {
         val old = bands
         granularity = n
-        // On conserve l'allure : le gain de chaque nouvelle bande est
-        // interpolé depuis la courbe actuelle.
+        // Keep the shape: the gain of each new band is interpolated from the
+        // current curve.
         bands = GRANULARITY[n]!!.map { f ->
             val g = old.sumOf { peakingDb(f.toDouble(), it) }
             EqBand(f, g.coerceIn(GAIN_MIN, GAIN_MAX), 1.4)
@@ -122,40 +129,40 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-        // --- Préréglages ---
-        Text("Préréglages", fontSize = 12.sp,
+        // --- Presets ---
+        Text(stringResource(R.string.eq_presets), fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyRowCompat {
-            PRESETS.forEach { (name, fn) ->
+            PRESETS.forEach { preset ->
                 AssistChip(
-                    onClick = { bands = fn(bands); masterGain = 0.0 },
+                    onClick = { bands = preset.apply(bands); masterGain = 0.0 },
                     enabled = !busy,
-                    label = { Text(name, fontSize = 12.sp) },
+                    label = { Text(stringResource(preset.labelRes), fontSize = 12.sp) },
                     modifier = Modifier.padding(end = 6.dp),
                 )
             }
         }
 
-        // --- Finesse ---
+        // --- Granularity ---
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Finesse", fontSize = 12.sp,
+            Text(stringResource(R.string.eq_granularity), fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             GRANULARITY.keys.sorted().forEach { n ->
                 FilterChip(
                     selected = granularity == n,
                     onClick = { setGranularity(n) },
                     enabled = !busy,
-                    label = { Text("$n bandes", fontSize = 12.sp) },
+                    label = { Text(stringResource(R.string.eq_bands, n), fontSize = 12.sp) },
                 )
             }
         }
 
         EqCurve(bands, masterGain)
 
-        // --- Banc de faders verticaux ---
+        // --- Bank of vertical faders ---
         FaderBank(
             bands = bands,
             selected = selected,
@@ -166,7 +173,7 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
             },
         )
 
-        // --- Détail de la bande sélectionnée ---
+        // --- Detail of the selected band ---
         val b = bands.getOrNull(selected)
         if (b != null) {
             Card(colors = CardDefaults.cardColors(
@@ -176,13 +183,17 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("Bande ${selected + 1} — ${fmtFreq(b.freq)} Hz",
-                            fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("%+.1f dB".format(b.gain), fontSize = 14.sp)
+                        Text(
+                            stringResource(
+                                R.string.eq_band_detail, selected + 1, fmtFreq(b.freq),
+                            ),
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        )
+                        Text(stringResource(R.string.eq_gain_db, b.gain), fontSize = 14.sp)
                     }
 
                     Spacer(Modifier.height(8.dp))
-                    Text("Largeur de bande  Q %.1f".format(b.q), fontSize = 12.sp)
+                    Text(stringResource(R.string.eq_bandwidth, b.q), fontSize = 12.sp)
                     Slider(
                         value = b.q.toFloat(),
                         onValueChange = { v ->
@@ -193,7 +204,7 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
                         enabled = !busy,
                     )
                     Text(
-                        "Q faible : cloche large. Q élevé : correction étroite.",
+                        stringResource(R.string.eq_bandwidth_hint),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -201,7 +212,7 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
             }
         }
 
-        Text("Gain maître  %+.1f dB".format(masterGain), fontSize = 12.sp)
+        Text(stringResource(R.string.eq_master_gain, masterGain), fontSize = 12.sp)
         Slider(
             value = masterGain.toFloat(),
             onValueChange = { masterGain = (it * 2).roundToInt() / 2.0 },
@@ -213,23 +224,28 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
             OutlinedButton(
                 onClick = { bands = bands.map { it.copy(gain = 0.0) }; masterGain = 0.0 },
                 enabled = !busy,
-            ) { Text("Zéro") }
+            ) { Text(stringResource(R.string.action_zero)) }
 
             Button(
                 onClick = { onApply(bands, masterGain) },
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
-            ) { Text(if (busy) "Application…" else "Appliquer") }
+            ) {
+                Text(
+                    if (busy) stringResource(R.string.action_applying)
+                    else stringResource(R.string.action_apply)
+                )
+            }
         }
     }
 }
 
 /**
- * Banc de faders verticaux dessiné d'un bloc.
+ * Bank of vertical faders drawn in one go.
  *
- * Un Canvas unique plutôt que N Slider : avec 8 ou 10 bandes, des composants
- * empilés deviennent trop étroits pour être touchés. Ici la zone tactile de
- * chaque bande couvre toute sa colonne.
+ * A single Canvas rather than N Sliders: with 8 or 10 bands, stacked
+ * components become too narrow to hit. Here each band's touch area covers its
+ * whole column.
  */
 @Composable
 private fun FaderBank(
@@ -244,7 +260,7 @@ private fun FaderBank(
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val density = LocalDensity.current
 
-    // Convertit une ordonnée en gain, arrondi au demi-décibel et borné.
+    // Turns an ordinate into a gain, rounded to half a decibel and clamped.
     fun gainAt(y: Float, h: Float): Double {
         val usable = h - 40f
         val mid = 20f + usable / 2f
@@ -294,7 +310,7 @@ private fun FaderBank(
             val mid = top + usable / 2f
             val trackW = minOf(colW * 0.30f, 16f)
 
-            // Repère 0 dB.
+            // 0 dB reference line.
             drawLine(dim.copy(alpha = 0.35f), Offset(0f, mid), Offset(size.width, mid),
                 strokeWidth = 1f)
 
@@ -302,7 +318,7 @@ private fun FaderBank(
                 val cx = colW * i + colW / 2f
                 val y = (mid - (b.gain / GAIN_MAX) * (usable / 2f)).toFloat()
 
-                // Rail.
+                // Track.
                 drawRoundRect(
                     color = track,
                     topLeft = Offset(cx - trackW / 2f, top),
@@ -310,7 +326,7 @@ private fun FaderBank(
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackW / 2f),
                 )
 
-                // Remplissage depuis le zéro.
+                // Fill from the zero line.
                 val fillTop = minOf(y, mid)
                 val fillH = kotlin.math.abs(y - mid)
                 if (fillH > 1f) {
@@ -322,7 +338,7 @@ private fun FaderBank(
                     )
                 }
 
-                // Poignée.
+                // Handle.
                 drawCircle(
                     color = if (i == selected) accent else accent.copy(alpha = 0.8f),
                     radius = if (i == selected) 11f else 9f,
@@ -332,7 +348,7 @@ private fun FaderBank(
             }
         }
 
-        // Étiquettes de fréquence sous chaque fader.
+        // Frequency labels under each fader.
         Row(Modifier.fillMaxWidth()) {
             bands.forEachIndexed { i, b ->
                 Text(
@@ -378,7 +394,7 @@ private fun EqCurve(bands: List<EqBand>, masterGain: Double) {
     }
 }
 
-/** Rangée défilante horizontalement, sans dépendre de FlowRow. */
+/** Horizontally scrolling row, without depending on FlowRow. */
 @Composable
 private fun LazyRowCompat(content: @Composable RowScope.() -> Unit) {
     Row(
