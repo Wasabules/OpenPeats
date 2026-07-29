@@ -37,3 +37,7 @@ android/app/build/
 android/local.properties
 android/.idea/
 *.iml
+
+# Binaires compilés à la racine
+/peatsctl
+/peatsctl.exe
