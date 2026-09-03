@@ -368,6 +368,55 @@ jobs:
           echo "--- release contents ---"
           cat SHA256SUMS
 
+      # The release body is the CHANGELOG section for the version being built:
+      # the notes are written once, reviewed in a diff like everything else,
+      # and cannot drift from what actually shipped. A version with no section
+      # fails the release rather than publishing one with nothing to read.
+      - name: Assemble the release notes
+        run: |
+          set -euo pipefail
+          section=$(awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## \[/       { exit }
+            found                    { print }
+          ' CHANGELOG.md | sed '/./,$!d')
+
+          if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
+            echo "::error::CHANGELOG.md has no section for $VERSION — add one before tagging"
+            exit 1
+          fi
+
+          echo "$section" > notes.md
+
+          # Separated from the changelog: what follows is the same boilerplate
+          # every release carries, not part of the version's notes.
+          { echo; echo '---'; echo; } >> notes.md
+
+          cat >> notes.md <<'FOOTER'
+          Open control for SoundPEATS earbuds — see the
+          [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+
+          The interface ships in English and French and follows the system
+          language; the desktop app also has a picker in its top bar.
+
+          | Platform | File |
+          |---|---|
+          | Linux (Debian/Ubuntu) | `peatsaudio_${{ env.VERSION }}_amd64.deb` |
+          | Linux (portable) | `peatsaudio-${{ env.VERSION }}-linux-amd64.tar.gz` |
+          | Windows (installer) | `peatsaudio-${{ env.VERSION }}-windows-amd64-installer.exe` |
+          | Windows (portable) | `peatsaudio-${{ env.VERSION }}-windows-amd64.zip` |
+          | Android | `openpeats-${{ env.VERSION }}.apk` |
+
+          The Linux build needs `libwebkit2gtk-4.1-0` (Ubuntu 24.04+,
+          Fedora 39+); the `.deb` declares it. `peatsctl` is a command line
+          tool for checking the transport without a GUI.
+
+          Verify your download against `SHA256SUMS`.
+          FOOTER
+
+          echo "--- release notes ---"
+          cat notes.md
+
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
@@ -377,23 +426,4 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: dist/*
-          body: |
-            Open control for SoundPEATS earbuds — see the
-            [README](https://github.com/${{ github.repository }}/blob/main/README.md).
-
-            The interface ships in English and French and follows the system
-            language; the desktop app also has a picker in its top bar.
-
-            | Platform | File |
-            |---|---|
-            | Linux (Debian/Ubuntu) | `peatsaudio_${{ env.VERSION }}_amd64.deb` |
-            | Linux (portable) | `peatsaudio-${{ env.VERSION }}-linux-amd64.tar.gz` |
-            | Windows (installer) | `peatsaudio-${{ env.VERSION }}-windows-amd64-installer.exe` |
-            | Windows (portable) | `peatsaudio-${{ env.VERSION }}-windows-amd64.zip` |
-            | Android | `openpeats-${{ env.VERSION }}.apk` |
-
-            The Linux build needs `libwebkit2gtk-4.1-0` (Ubuntu 24.04+,
-            Fedora 39+); the `.deb` declares it. `peatsctl` is a command line
-            tool for checking the transport without a GUI.
-
-            Verify your download against `SHA256SUMS`.
+          body_path: notes.md
