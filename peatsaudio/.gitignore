@@ -10,3 +10,7 @@ node_modules
 # the negation below could never match — hence the trailing /*.
 frontend/dist/*
 !frontend/dist/.gitkeep
+
+# Wails hashes package.json into this file to decide whether `npm install`
+# still needs running. It is rewritten on every build.
+frontend/package.json.md5

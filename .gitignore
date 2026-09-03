@@ -22,9 +22,12 @@ hci.btsnoop
 # ./gradlew does not work on a fresh clone.
 !android/gradle/wrapper/gradle-wrapper.jar
 
-# Build artefacts
+# Build artefacts. `go build ./...` inside probe/ drops the binary next to
+# the source, so the name has to match exactly or an ordinary build dirties
+# the working tree.
 build/bin/
-probe/peats-probe
+probe/peatsprobe
+probe/peatsprobe.exe
 
 # The built frontend is ignored, but the directory itself must exist on a
 # fresh clone: main.go does //go:embed all:frontend/dist, and Wails loads that
