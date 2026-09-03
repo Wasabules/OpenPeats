@@ -101,6 +101,11 @@ Windows, catalogue parity, frontend build, Android debug build.
 artefacts plus `SHA256SUMS`. Version numbers come from the tag; nothing is
 hard-coded in the build files.
 
+The release body is the `CHANGELOG.md` section matching the tag, so a version
+needs its entry written before it is tagged — the publish job fails otherwise
+rather than shipping a release with nothing to read. The whole procedure is in
+`.claude/skills/release/SKILL.md`.
+
 ## Architecture
 
 ### A deliberate double implementation
