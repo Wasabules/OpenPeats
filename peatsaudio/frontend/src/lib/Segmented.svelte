@@ -1,11 +1,12 @@
 <script>
-  import { createEventDispatcher } from "svelte";
-  const dispatch = createEventDispatcher();
-
-  /** [{ value, label, note? }] — labels arrive already translated. */
-  export let options = [];
-  export let value = null;
-  export let disabled = false;
+  let {
+    /** [{ value, label, note? }] — labels arrive already translated. */
+    options = [],
+    value = null,
+    disabled = false,
+    /** Called with the value of the segment the user picked. */
+    onchange,
+  } = $props();
 </script>
 
 <div class="seg" class:disabled>
@@ -14,7 +15,7 @@
       type="button"
       class:active={o.value === value}
       {disabled}
-      on:click={() => dispatch("change", o.value)}
+      onclick={() => onchange?.(o.value)}
       title={o.note || ""}
     >
       {o.label}

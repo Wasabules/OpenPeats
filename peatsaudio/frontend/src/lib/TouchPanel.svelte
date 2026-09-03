@@ -1,11 +1,12 @@
 <script>
-  import { createEventDispatcher } from "svelte";
   import { t } from "./i18n.js";
 
-  const dispatch = createEventDispatcher();
-
-  export let mappings = [];
-  export let busy = false;
+  let {
+    mappings = [],
+    busy = false,
+    /** Called with the gesture/action pairs to write, unassigned ones removed. */
+    onapply,
+  } = $props();
 
   // Protocol codes paired with their catalogue key. The codes are wire
   // values and never change; only the label is translated.
@@ -33,10 +34,16 @@
 
   // Working table: the mapping read from the earbuds, filled in with the
   // gestures the reply left out.
-  let draft = [];
-  $: draft = GESTURES.map((g) => {
-    const found = mappings.find((m) => m.gesture === g.code);
-    return { gesture: g.code, action: found ? found.action : 0 };
+  //
+  // An effect rather than $derived, because the table is written to as well as
+  // read: edits made here sit on top of it until the earbuds report a new
+  // mapping, which resets the table to what the hardware actually holds.
+  let draft = $state([]);
+  $effect(() => {
+    draft = GESTURES.map((g) => {
+      const found = mappings.find((m) => m.gesture === g.code);
+      return { gesture: g.code, action: found ? found.action : 0 };
+    });
   });
 
   function setAction(gesture, action) {
@@ -53,7 +60,7 @@
         <span class="gesture">{$t(g.key)}</span>
         <select
           value={(draft.find((d) => d.gesture === g.code) || {}).action || 0}
-          on:change={(e) => setAction(g.code, e.currentTarget.value)}
+          onchange={(e) => setAction(g.code, e.currentTarget.value)}
           disabled={busy}
         >
           <option value={0}>{$t("touch.unassigned")}</option>
@@ -71,7 +78,8 @@
 
   <div class="actions">
     <button class="primary" disabled={busy}
-            on:click={() => dispatch("apply", draft.filter((d) => d.action !== 0))}>
+            onclick={() => onapply?.(
+              $state.snapshot(draft).filter((d) => d.action !== 0))}>
       {$t("action.applyMapping")}
     </button>
   </div>

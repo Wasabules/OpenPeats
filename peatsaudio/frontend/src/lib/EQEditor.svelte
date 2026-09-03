@@ -1,10 +1,11 @@
 <script>
-  import { createEventDispatcher } from "svelte";
   import { t } from "./i18n.js";
 
-  const dispatch = createEventDispatcher();
-
-  export let busy = false;
+  let {
+    busy = false,
+    /** Called with { bands, masterGain } when the curve is sent. */
+    onapply,
+  } = $props();
 
   const FS = 48000;
   const F_MIN = 20;
@@ -55,9 +56,11 @@
     },
   ];
 
-  let granularity = 8;
-  export let masterGain = 0;
-  export let bands = GRANULARITY[8].map((f) => ({ freq: f, gain: 0, q: 1.4 }));
+  // The curve belongs to this component: it is edited here and leaves only
+  // through onapply, so it is internal state rather than a prop.
+  let granularity = $state(8);
+  let masterGain = $state(0);
+  let bands = $state(GRANULARITY[8].map((f) => ({ freq: f, gain: 0, q: 1.4 })));
 
   function setGranularity(n) {
     granularity = n;
@@ -119,7 +122,7 @@
   const yOf = (db) => PAD_T + plotH / 2 - (db / DB_RANGE) * (plotH / 2);
   const dbOf = (y) => ((PAD_T + plotH / 2 - y) / (plotH / 2)) * DB_RANGE;
 
-  $: curvePoints = (() => {
+  const curvePoints = $derived.by(() => {
     const pts = [];
     for (let i = 0; i <= 200; i++) {
       const f = F_MIN * Math.pow(F_MAX / F_MIN, i / 200);
@@ -127,11 +130,11 @@
       pts.push(`${xOf(f).toFixed(1)},${yOf(db).toFixed(1)}`);
     }
     return pts.join(" ");
-  })();
+  });
 
   // --- Direct manipulation of the points on the curve ---
-  let svgEl;
-  let dragIndex = -1;
+  let svgEl = $state();
+  let dragIndex = $state(-1);
 
   function svgPos(evt) {
     const r = svgEl.getBoundingClientRect();
@@ -163,7 +166,6 @@
     freq = Math.max(lo, Math.min(hi, freq));
 
     bands[dragIndex] = { ...b, gain, freq };
-    bands = bands;
   }
 
   function onPointerUp() { dragIndex = -1; }
@@ -179,21 +181,21 @@
       <span class="faint">{$t("eq.granularity")}</span>
       {#each Object.keys(GRANULARITY).map(Number) as n}
         <button class:active={granularity === n} disabled={busy}
-                on:click={() => setGranularity(n)}>{$t("eq.bands", { count: n })}</button>
+                onclick={() => setGranularity(n)}>{$t("eq.bands", { count: n })}</button>
       {/each}
     </div>
     <div class="group">
       {#each PRESETS as preset}
-        <button disabled={busy} on:click={() => applyPreset(preset)}>{$t(preset.key)}</button>
+        <button disabled={busy} onclick={() => applyPreset(preset)}>{$t(preset.key)}</button>
       {/each}
-      <button disabled={busy} on:click={reset}>{$t("action.reset")}</button>
+      <button disabled={busy} onclick={reset}>{$t("action.reset")}</button>
     </div>
   </div>
 
   <svg bind:this={svgEl} viewBox="0 0 {W} {H}" class="curve"
-       on:pointermove={onPointerMove}
-       on:pointerup={onPointerUp}
-       on:pointerleave={onPointerUp}
+       onpointermove={onPointerMove}
+       onpointerup={onPointerUp}
+       onpointerleave={onPointerUp}
        role="application"
        aria-label={$t("eq.curveLabel")}>
     {#each GRID_DB as db}
@@ -214,9 +216,16 @@
       <line x1={xOf(b.freq)} x2={xOf(b.freq)}
             y1={yOf(0)} y2={yOf(b.gain + masterGain)}
             stroke="#3d4558" stroke-width="1" />
+      <!-- The handle really is a slider: dragging it sets the gain of the
+           band. Kept out of the tab order because the fader below drives the
+           same value and is the keyboard-accessible control. -->
       <circle class="handle" class:dragging={dragIndex === i}
               cx={xOf(b.freq)} cy={yOf(b.gain + masterGain)} r="7"
-              on:pointerdown={(e) => onPointerDown(i, e)} />
+              role="slider" tabindex="-1"
+              aria-label={$t("eq.gainAt", { freq: fmtF(b.freq) })}
+              aria-valuemin={GAIN_MIN} aria-valuemax={GAIN_MAX}
+              aria-valuenow={b.gain}
+              onpointerdown={(e) => onPointerDown(i, e)} />
     {/each}
   </svg>
 
@@ -253,7 +262,7 @@
              bind:value={masterGain} disabled={busy} />
     </div>
     <button class="primary" disabled={busy}
-            on:click={() => dispatch("apply", { bands, masterGain })}>
+            onclick={() => onapply?.({ bands: $state.snapshot(bands), masterGain })}>
       {busy ? $t("action.applying") : $t("action.apply")}
     </button>
   </div>

@@ -1,12 +1,15 @@
 <script>
   import { t } from "./i18n.js";
 
-  export let title = "";
-  export let hint = "";
-  /** Feature absent from the model: the card is dimmed and explained. */
-  export let unsupported = false;
-  /** Behaviour inferred from analysis but never validated on the wire. */
-  export let unverified = false;
+  let {
+    title = "",
+    hint = "",
+    /** Feature absent from the model: the card is dimmed and explained. */
+    unsupported = false,
+    /** Behaviour inferred from analysis but never validated on the wire. */
+    unverified = false,
+    children,
+  } = $props();
 </script>
 
 <section class="card" class:unsupported>
@@ -23,7 +26,7 @@
   </header>
   {#if hint}<p class="hint">{hint}</p>{/if}
   <div class="body" class:disabled={unsupported}>
-    <slot />
+    {@render children?.()}
   </div>
 </section>
 

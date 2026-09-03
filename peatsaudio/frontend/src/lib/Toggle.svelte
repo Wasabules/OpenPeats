@@ -1,11 +1,12 @@
 <script>
-  import { createEventDispatcher } from "svelte";
-  const dispatch = createEventDispatcher();
-
-  export let label = "";
-  export let checked = false;
-  export let disabled = false;
-  export let note = "";
+  let {
+    label = "",
+    checked = false,
+    disabled = false,
+    note = "",
+    /** Called with the value the switch is being flipped to. */
+    onchange,
+  } = $props();
 </script>
 
 <label class="row" class:disabled>
@@ -20,9 +21,9 @@
     {disabled}
     aria-pressed={checked}
     aria-label={label}
-    on:click={() => dispatch("change", !checked)}
+    onclick={() => onchange?.(!checked)}
   >
-    <span class="knob" />
+    <span class="knob"></span>
   </button>
 </label>
 

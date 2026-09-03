@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
-    "moduleResolution": "Node",
+    /* "bundler" is what Vite actually does: it honours package "exports"
+       and needs no file extensions. */
+    "moduleResolution": "bundler",
     "target": "ESNext",
     "module": "ESNext",
-    /**
-     * svelte-preprocess cannot figure out whether you have
-     * a value or a type, so tell TypeScript to enforce using
-     * `import type` instead of `import` for Types.
-     */
-    "importsNotUsedAsValues": "error",
+    /* The Svelte compiler strips types per file without looking at the rest
+       of the program, so a type import has to be written as one. Replaces
+       importsNotUsedAsValues, which TypeScript 5.5 removed. */
+    "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
     /**

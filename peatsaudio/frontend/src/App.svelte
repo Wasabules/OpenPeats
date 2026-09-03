@@ -5,7 +5,6 @@
   import Segmented from "./lib/Segmented.svelte";
   import EQEditor from "./lib/EQEditor.svelte";
   import TouchPanel from "./lib/TouchPanel.svelte";
-  import { get } from "svelte/store";
   import { LOCALES, locale, setLocale, t } from "./lib/i18n.js";
 
   import {
@@ -21,7 +20,7 @@
   } from "../wailsjs/go/main/App";
   import { EventsOn } from "../wailsjs/runtime/runtime";
 
-  let state = {
+  let state = $state({
     connected: false, mac: "", channel: 0, firmware: "",
     batteryLeft: 0, batteryRight: 0, batteryCase: 0,
     ancMode: 0, ancLevel: 0, ancLevels: [],
@@ -32,19 +31,19 @@
     keyMappings: [], supported: {},
     batteryAlert: true, batteryThresh: 20,
     language: "en",
-  };
+  });
 
-  let mac = "98:80:BB:40:D4:ED";
-  let tab = "audio";
-  let busy = false;
-  let logs = [];
-  let frames = [];
+  let mac = $state("98:80:BB:40:D4:ED");
+  let tab = $state("audio");
+  let busy = $state(false);
+  let logs = $state([]);
+  let frames = $state([]);
   /** Message from Go: { key, args }. Empty key means no error. */
-  let connError = null;
-  let alert = null;
+  let connError = $state(null);
+  let alert = $state(null);
 
-  let rawCmd = "0306";
-  let rawPayload = "";
+  let rawCmd = $state("0306");
+  let rawPayload = $state("");
 
   const TABS = [
     { id: "audio", key: "tab.audio" },
@@ -82,46 +81,51 @@
   // Keep the Go side on the same language: desktop notifications must never
   // arrive in a different language from the window that triggered them.
   //
-  // Guarded rather than fire-and-forget: this runs during component setup,
-  // and the Wails bindings throw synchronously if window.go is not injected
-  // yet. An uncaught error there would leave a blank window — a far worse
-  // outcome than notifications staying in the previous language.
-  $: syncBackendLanguage($locale);
-
-  function syncBackendLanguage(code) {
+  // An effect rather than a plain call: it runs after the component is
+  // mounted, so the Wails bindings are injected by the time it first fires,
+  // and it fires again on every language change. The guard stays anyway — an
+  // uncaught error here would leave a blank window, a far worse outcome than
+  // notifications keeping the previous language.
+  $effect(() => {
+    const code = $locale;
     try {
       SetLanguage(code)?.catch(() => {});
     } catch {
-      // Bindings not ready. onMount below reapplies the language once they
-      // are, so this only ever loses the very first attempt.
+      // Bindings not ready; the next language change reapplies it.
     }
-  }
+  });
 
-  $: sup = state.supported || {};
-  $: ancModeOptions = ANC_MODES.map((m) => ({ value: m.value, label: $t(m.key) }));
-  $: ancLevelOptions = (state.ancLevels || []).map((p) => ({
-    value: p.code,
-    label: ANC_LEVEL_KEYS[p.code]
-      ? $t(ANC_LEVEL_KEYS[p.code])
-      : `0x${p.code.toString(16)}`,
-  }));
-  $: transparencyOptions = (state.transparencyLevels || []).map((p) => ({
-    value: p.code,
-    label: TRANSPARENCY_KEYS[p.code]
-      ? $t(TRANSPARENCY_KEYS[p.code])
-      : `0x${p.code.toString(16)}`,
-  }));
+  const sup = $derived(state.supported || {});
+  const ancModeOptions = $derived(
+    ANC_MODES.map((m) => ({ value: m.value, label: $t(m.key) }))
+  );
+  const ancLevelOptions = $derived(
+    (state.ancLevels || []).map((p) => ({
+      value: p.code,
+      label: ANC_LEVEL_KEYS[p.code]
+        ? $t(ANC_LEVEL_KEYS[p.code])
+        : `0x${p.code.toString(16)}`,
+    }))
+  );
+  const transparencyOptions = $derived(
+    (state.transparencyLevels || []).map((p) => ({
+      value: p.code,
+      label: TRANSPARENCY_KEYS[p.code]
+        ? $t(TRANSPARENCY_KEYS[p.code])
+        : `0x${p.code.toString(16)}`,
+    }))
+  );
 
-  $: ancLevelRelevant = state.ancMode === 1;
-  $: transparencyRelevant = state.ancMode === 2;
+  const ancLevelRelevant = $derived(state.ancMode === 1);
+  const transparencyRelevant = $derived(state.ancMode === 2);
 
   // Battery readings, paired with their label key so the status bar and the
   // low-battery banner name the same thing the same way.
-  $: batteries = [
+  const batteries = $derived([
     { key: "battery.left", value: state.batteryLeft },
     { key: "battery.right", value: state.batteryRight },
     { key: "battery.case", value: state.batteryCase },
-  ];
+  ]);
 
   const stamp = () => new Date().toLocaleTimeString($locale);
 
@@ -141,10 +145,6 @@
     const s = await GetState();
     state = s;
     if (s.mac) mac = s.mac;
-
-    // The bindings are certainly up by now; reapply in case the reactive
-    // statement above ran before they were injected.
-    syncBackendLanguage(get(locale));
   });
 
   async function run(fn) {
@@ -156,9 +156,9 @@
   const doDisconnect = () => run(Disconnect);
   const doRefresh = () => run(Refresh);
 
-  const onApplyEQ = (e) =>
-    run(async () => { await ApplyEQ(e.detail.bands, e.detail.masterGain); });
-  const onApplyKeys = (e) => run(async () => { await SetKeyMappings(e.detail); });
+  const onApplyEQ = ({ bands, masterGain }) =>
+    run(async () => { await ApplyEQ(bands, masterGain); });
+  const onApplyKeys = (mappings) => run(async () => { await SetKeyMappings(mappings); });
 
   const sendRaw = () => run(async () => {
     const err = await SendRaw(rawCmd, rawPayload, false);
@@ -174,14 +174,14 @@
 
 <header class="topbar">
   <div class="brand">
-    <span class="dot" class:on={state.connected} />
+    <span class="dot" class:on={state.connected}></span>
     <strong>PeatsAudio</strong>
     <span class="faint">{$t("app.tagline")}</span>
   </div>
 
   <div class="conn">
     <select class="lang" value={$locale} aria-label={$t("field.uiLanguage")}
-            on:change={(e) => setLocale(e.currentTarget.value)}>
+            onchange={(e) => setLocale(e.currentTarget.value)}>
       {#each LOCALES as l}
         <option value={l.code}>{l.label}</option>
       {/each}
@@ -190,10 +190,10 @@
     <input type="text" bind:value={mac} spellcheck="false"
            disabled={busy || state.connected} aria-label={$t("field.macAddress")} />
     {#if state.connected}
-      <button on:click={doRefresh} disabled={busy}>{$t("action.refresh")}</button>
-      <button on:click={doDisconnect} disabled={busy}>{$t("action.disconnect")}</button>
+      <button onclick={doRefresh} disabled={busy}>{$t("action.refresh")}</button>
+      <button onclick={doDisconnect} disabled={busy}>{$t("action.disconnect")}</button>
     {:else}
-      <button class="primary" on:click={doConnect} disabled={busy}>
+      <button class="primary" onclick={doConnect} disabled={busy}>
         {busy ? $t("action.working") : $t("action.connect")}
       </button>
     {/if}
@@ -204,7 +204,7 @@
   <div class="alert">
     <strong>{$t("alert.lowBattery.title")}</strong> —
     {$t("alert.lowBattery.body", { label: $t(alert.labelKey), percent: alert.percent })}
-    <button class="close" on:click={() => (alert = null)}
+    <button class="close" onclick={() => (alert = null)}
             aria-label={$t("action.dismiss")}>✕</button>
   </div>
 {/if}
@@ -220,7 +220,7 @@
         <div class="batt">
           <span class="faint">{$t(b.key)}</span>
           <div class="bar">
-            <div class="fill {battClass(b.value)}" style="width:{b.value}%" />
+            <div class="fill {battClass(b.value)}" style="width:{b.value}%"></div>
           </div>
           <span class="pct">{b.value}%</span>
         </div>
@@ -235,7 +235,7 @@
 
 <nav class="tabs">
   {#each TABS as item}
-    <button class:active={tab === item.id} on:click={() => (tab = item.id)}>
+    <button class:active={tab === item.id} onclick={() => (tab = item.id)}>
       {$t(item.key)}
     </button>
   {/each}
@@ -252,7 +252,7 @@
     <div class="grid">
       <Card title={$t("card.anc.title")} hint={$t("card.anc.hint")}>
         <Segmented options={ancModeOptions} value={state.ancMode} disabled={busy}
-                   on:change={(e) => run(() => SetANCMode(e.detail))} />
+                   onchange={(v) => run(() => SetANCMode(v))} />
       </Card>
 
       <Card title={$t("card.ancLevel.title")}
@@ -260,7 +260,7 @@
             hint={ancLevelRelevant ? "" : $t("card.ancLevel.hint")}>
         <Segmented options={ancLevelOptions} value={state.ancLevel}
                    disabled={busy || !ancLevelRelevant}
-                   on:change={(e) => run(() => SetANCLevel(e.detail))} />
+                   onchange={(v) => run(() => SetANCLevel(v))} />
       </Card>
 
       <Card title={$t("card.transparency.title")}
@@ -268,21 +268,21 @@
             hint={transparencyRelevant ? "" : $t("card.transparency.hint")}>
         <Segmented options={transparencyOptions} value={state.transparencyLevel}
                    disabled={busy || !transparencyRelevant}
-                   on:change={(e) => run(() => SetTransparencyLevel(e.detail))} />
+                   onchange={(v) => run(() => SetTransparencyLevel(v))} />
       </Card>
 
       <Card title={$t("card.codec.title")} hint={$t("card.codec.hint")}>
         <Toggle label={$t("toggle.ldac.label")} checked={state.ldac}
                 disabled={busy || sup.ldac === false}
                 note={$t("toggle.ldac.note")}
-                on:change={(e) => run(() => SetLDAC(e.detail))} />
+                onchange={(v) => run(() => SetLDAC(v))} />
         <Toggle label={$t("toggle.multipoint.label")} checked={state.multipoint}
                 disabled={busy || sup.multipoint === false}
                 note={$t("toggle.multipoint.note")}
-                on:change={(e) => run(() => SetMultipoint(e.detail))} />
+                onchange={(v) => run(() => SetMultipoint(v))} />
         <Toggle label={$t("toggle.leAudio.label")} checked={state.leAudio}
                 disabled={busy || sup.leAudio === false}
-                on:change={(e) => run(() => SetLEAudio(e.detail))} />
+                onchange={(v) => run(() => SetLEAudio(v))} />
       </Card>
     </div>
 
@@ -292,28 +292,28 @@
         <Toggle label={$t("toggle.gameMode.label")} checked={state.gameMode}
                 disabled={busy || sup.gameMode === false}
                 note={$t("toggle.gameMode.note")}
-                on:change={(e) => run(() => SetGameMode(e.detail))} />
+                onchange={(v) => run(() => SetGameMode(v))} />
         <Toggle label={$t("toggle.touchDisabled.label")}
                 checked={state.touchDisabled}
                 disabled={busy || sup.touchDisabled === false}
                 note={$t("toggle.touchDisabled.note")}
-                on:change={(e) => run(() => SetTouchDisabled(e.detail))} />
+                onchange={(v) => run(() => SetTouchDisabled(v))} />
       </Card>
 
       <Card title={$t("card.batteryAlert.title")} hint={$t("card.batteryAlert.hint")}>
         <Toggle label={$t("toggle.systemNotifications.label")}
                 checked={state.batteryAlert} disabled={busy}
-                on:change={(e) => run(() => SetBatteryAlert(e.detail))} />
+                onchange={(v) => run(() => SetBatteryAlert(v))} />
         <div class="field" style="margin-top:10px">
           <span class="faint">
             {$t("field.alertThreshold", { value: state.batteryThresh })}
           </span>
           <input type="range" min="5" max="50" step="5"
                  value={state.batteryThresh} disabled={busy}
-                 on:change={(e) => run(() => SetBatteryThreshold(Number(e.currentTarget.value)))} />
+                 onchange={(e) => run(() => SetBatteryThreshold(Number(e.currentTarget.value)))} />
         </div>
         <div style="margin-top:12px; display:flex; justify-content:flex-end">
-          <button on:click={() => TestBatteryNotification()} disabled={busy}>
+          <button onclick={() => TestBatteryNotification()} disabled={busy}>
             {$t("action.testNotification")}
           </button>
         </div>
@@ -323,7 +323,7 @@
         <div class="field">
           <span class="faint">{$t("field.language")}</span>
           <select value={state.voicePack} disabled={busy}
-                  on:change={(e) => run(() => SetVoicePack(Number(e.currentTarget.value)))}>
+                  onchange={(e) => run(() => SetVoicePack(Number(e.currentTarget.value)))}>
             {#each VOICE_PACKS as v}
               <option value={v.value}>{v.label}</option>
             {/each}
@@ -335,7 +335,7 @@
           </span>
           <input type="range" min="0" max="100" step="1"
                  value={state.promptVolume} disabled={busy || sup.promptVolume === false}
-                 on:change={(e) => run(() => SetPromptVolume(Number(e.currentTarget.value)))} />
+                 onchange={(e) => run(() => SetPromptVolume(Number(e.currentTarget.value)))} />
         </div>
       </Card>
 
@@ -355,14 +355,14 @@
       <Card title={$t("card.touch.title")} unverified
             unsupported={sup.keyMappings === false}
             hint={$t("card.touch.hint")}>
-        <TouchPanel mappings={state.keyMappings} {busy} on:apply={onApplyKeys} />
+        <TouchPanel mappings={state.keyMappings} {busy} onapply={onApplyKeys} />
       </Card>
     </div>
 
   {:else if tab === "eq"}
     <div class="single wide">
       <Card title={$t("card.eq.title")} hint={$t("card.eq.hint")}>
-        <EQEditor {busy} on:apply={onApplyEQ} />
+        <EQEditor {busy} onapply={onApplyEQ} />
       </Card>
     </div>
 
@@ -378,7 +378,7 @@
             <span class="faint">{$t("field.rawPayload")}</span>
             <input type="text" bind:value={rawPayload} placeholder="01" spellcheck="false" />
           </label>
-          <button on:click={sendRaw} disabled={busy}>{$t("action.send")}</button>
+          <button onclick={sendRaw} disabled={busy}>{$t("action.send")}</button>
         </div>
       </Card>
 
