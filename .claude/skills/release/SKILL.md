@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a PeatsAudio release from this repository — write the CHANGELOG section, verify the tree, commit, tag and let the workflow publish. Use whenever the user asks to "sortir une release", "faire une release", "release 0.3.0", "tag a version", "publier une version", "cut a release", or asks what a release needs. Encodes the rules that are easy to get wrong: the version lives only in the tag, the release body comes from CHANGELOG.md, and commits carry no attribution trailer.
+description: Cut a PeatsAudio release from this repository — write the CHANGELOG section, verify the tree, commit, tag and let the workflow publish. Use whenever the user asks to "sortir une release", "faire une release", "release 0.3.0", "tag a version", "publier une version", "cut a release", or asks what a release needs. Encodes the rules that are easy to get wrong — the version lives only in the tag, the release body comes from CHANGELOG.md, and commits carry no attribution trailer.
 ---
 
 # Cutting a PeatsAudio release
