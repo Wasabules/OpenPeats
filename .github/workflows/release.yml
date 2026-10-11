@@ -328,10 +328,8 @@ jobs:
             exit 1
           fi
 
-          suffix=""
-          [ "${{ steps.signing.outputs.available }}" = "true" ] || suffix="-unsigned"
-          cp "$apk" "$out/openpeats-$VERSION$suffix.apk"
-          [ -n "$aab" ] && cp "$aab" "$out/openpeats-$VERSION$suffix.aab"
+          cp "$apk" "$out/openpeats-$VERSION.apk"
+          [ -n "$aab" ] && cp "$aab" "$out/openpeats-$VERSION.aab"
           ls -lh "$out"
 
       # The repository .gitignore excludes *.apk to keep the manufacturer's APK
