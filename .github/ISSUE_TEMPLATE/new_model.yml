@@ -1,0 +1,50 @@
+name: Another earbuds model
+description: Report what PeatsAudio sees on a model other than the H3.
+labels: [model]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only the SOUNDPEATS H3 has been tested so far. A read-only capture from
+        another model is the most useful thing you can send: it tells which
+        commands answer and how. Reading changes nothing on the earbuds.
+
+        Please do not attach anything taken from the official application —
+        see the legal rule in CONTRIBUTING.md.
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "SOUNDPEATS Capsule3 Pro"
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      description: Shown in the desktop status bar once connected, and by peatsctl.
+    validations:
+      required: true
+
+  - type: textarea
+    id: peatsctl
+    attributes:
+      label: peatsctl output
+      description: "`peatsctl -addr <your earbuds' address>` — read only."
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: absent
+    attributes:
+      label: Features shown as absent
+      description: The "Features absent from this model" card on the desktop General tab.
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Features the official app offers on this model that PeatsAudio does not show, connection quirks, RFCOMM channel used…

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/Wasabules/OpenPeats/security/advisories/new
+    about: Report a vulnerability privately rather than in a public issue.

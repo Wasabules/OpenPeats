@@ -1,0 +1,68 @@
+name: Bug report
+description: Something does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The more precise the setup below, the
+        faster it can be reproduced — the same command can behave differently
+        from one model or firmware to the next.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux (desktop app)
+        - Windows (desktop app)
+        - Android
+        - peatsctl only
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: PeatsAudio version
+      placeholder: "0.2.1"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Earbuds model and firmware
+      description: The firmware is shown in the desktop status bar once connected.
+      placeholder: "SOUNDPEATS H3, S5_20250605_V0.4.9"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+
+  - type: textarea
+    id: peatsctl
+    attributes:
+      label: peatsctl output
+      description: |
+        On the desktop, `peatsctl -addr <your earbuds' address>` (read only)
+        shows what the earbuds answer, independently of the app. Leave your
+        address out of the paste if you prefer.
+      render: text
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Application log
+      description: Desktop — Advanced tab, Log card. Android — the Log section of the main screen.
+      render: text
