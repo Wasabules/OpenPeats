@@ -77,10 +77,13 @@
   "eq.qTitle": "Largeur de la cloche : Q faible = large, Q élevé = étroit",
 
   "error.busy": "Canal de contrôle occupé. Si le multipoint est actif, un autre appareil (téléphone avec l'app PeatsAudio ouverte) le monopolise — coupez-y le Bluetooth puis réessayez.",
+  "error.invalidAddress": "Adresse Bluetooth invalide : six octets hex séparés par des deux-points attendus, ex. AA:BB:CC:DD:EE:FF.",
   "error.invalidCommand": "Commande invalide : attendu 2 octets hex (ex. 0306).",
   "error.invalidPayload": "Payload hex invalide.",
+  "error.noAddress": "Saisissez d'abord l'adresse Bluetooth de vos écouteurs — elle figure dans les paramètres Bluetooth du système.",
   "error.noChannel": "Aucun canal RFCOMM. Écouteurs éteints, dans l'étui, ou non appairés.",
   "error.notConnected": "Non connecté.",
+  "error.payloadTooLong": "Payload trop long : une trame transporte 255 octets au plus.",
   "error.raw": "{error}",
   "error.unreachable": "Écouteurs injoignables — éteints, dans l'étui, ou hors de portée. Appairés ne suffit pas : le système doit avoir établi le lien.",
   "error.unsupported": "Transport RFCOMM non implémenté sur cette plateforme.",

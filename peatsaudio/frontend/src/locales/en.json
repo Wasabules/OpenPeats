@@ -77,10 +77,13 @@
   "eq.qTitle": "Bell width: low Q is wide, high Q is narrow",
 
   "error.busy": "Control channel busy. If multipoint is on, another device (a phone with the PeatsAudio app open) is holding it — turn Bluetooth off there and try again.",
+  "error.invalidAddress": "Invalid Bluetooth address: expected six hex bytes separated by colons, e.g. AA:BB:CC:DD:EE:FF.",
   "error.invalidCommand": "Invalid command: expected 2 hex bytes (e.g. 0306).",
   "error.invalidPayload": "Invalid hex payload.",
+  "error.noAddress": "Enter the Bluetooth address of your earbuds first — it is listed in your system's Bluetooth settings.",
   "error.noChannel": "No RFCOMM channel. Earbuds off, in their case, or not paired.",
   "error.notConnected": "Not connected.",
+  "error.payloadTooLong": "Payload too long: a frame carries 255 bytes at most.",
   "error.raw": "{error}",
   "error.unreachable": "Earbuds unreachable — off, in their case, or out of range. Paired is not enough: the system must have established the link.",
   "error.unsupported": "RFCOMM transport not implemented on this platform.",
