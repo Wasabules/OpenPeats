@@ -3,6 +3,10 @@
 <resources>
     <!-- Permissions et connexion -->
     <string name="permission_required">Autorisation Bluetooth requise.</string>
+    <string name="permission_denied_forever">L\'autorisation a été refusée définitivement. Accordez-la dans les réglages de l\'application, puis revenez ici.</string>
+    <string name="action_grant">Autoriser</string>
+    <string name="action_open_settings">Ouvrir les réglages</string>
+    <string name="bluetooth_off">Le Bluetooth est coupé. Activez-le, puis revenez ici.</string>
     <string name="paired_earbuds">Écouteurs appairés</string>
     <string name="no_paired_devices">Aucun appareil audio appairé. Appairez vos écouteurs dans les réglages Bluetooth, puis revenez ici.</string>
     <string name="reconnecting">Les écouteurs redémarrent — reconnexion…</string>
@@ -78,6 +82,21 @@
 
     <!-- Fonctions absentes -->
     <string name="section_unsupported">Absent de ce modèle</string>
+    <string name="feature_battery_left">Batterie gauche</string>
+    <string name="feature_battery_right">Batterie droite</string>
+    <string name="feature_battery_case">Batterie de l\'étui</string>
+    <string name="feature_firmware">Version du firmware</string>
+    <string name="feature_anc_mode">Réduction de bruit</string>
+    <string name="feature_anc_level">Sous-mode de réduction de bruit</string>
+    <string name="feature_transparency_level">Niveau de transparence</string>
+    <string name="feature_game_mode">Mode jeu</string>
+    <string name="feature_multipoint">Multipoint</string>
+    <string name="feature_ldac">LDAC</string>
+    <string name="feature_le_audio">LE Audio</string>
+    <string name="feature_touch_disabled">Verrouillage du tactile</string>
+    <string name="feature_prompt_volume">Volume des invites vocales</string>
+    <string name="feature_voice_pack">Langue des invites vocales</string>
+    <string name="feature_key_mappings">Commandes tactiles</string>
 
     <!-- Journal -->
     <string name="section_log">Journal</string>

@@ -9,6 +9,10 @@
 
     <!-- Permissions and connection -->
     <string name="permission_required">Bluetooth permission required.</string>
+    <string name="permission_denied_forever">The permission was refused for good. Grant it in the app settings, then come back here.</string>
+    <string name="action_grant">Grant permission</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="bluetooth_off">Bluetooth is off. Turn it on, then come back here.</string>
     <string name="paired_earbuds">Paired earbuds</string>
     <string name="no_paired_devices">No paired audio device. Pair your earbuds in the Bluetooth settings, then come back here.</string>
     <string name="reconnecting">The earbuds are restarting — reconnecting…</string>
@@ -85,6 +89,21 @@
 
     <!-- Unsupported features -->
     <string name="section_unsupported">Absent from this model</string>
+    <string name="feature_battery_left">Left battery</string>
+    <string name="feature_battery_right">Right battery</string>
+    <string name="feature_battery_case">Case battery</string>
+    <string name="feature_firmware">Firmware version</string>
+    <string name="feature_anc_mode">Noise cancelling</string>
+    <string name="feature_anc_level">Noise cancelling sub-mode</string>
+    <string name="feature_transparency_level">Transparency level</string>
+    <string name="feature_game_mode">Game mode</string>
+    <string name="feature_multipoint">Multipoint</string>
+    <string name="feature_ldac">LDAC</string>
+    <string name="feature_le_audio">LE Audio</string>
+    <string name="feature_touch_disabled">Touch lock</string>
+    <string name="feature_prompt_volume">Voice prompt volume</string>
+    <string name="feature_voice_pack">Voice prompt language</string>
+    <string name="feature_key_mappings">Touch controls</string>
 
     <!-- Log -->
     <string name="section_log">Log</string>

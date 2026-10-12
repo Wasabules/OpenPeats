@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Android 12+: runtime Bluetooth permissions. -->
+    <!-- Android 12+: runtime Bluetooth permission. The app only talks to
+         earbuds that are already paired and never scans, so CONNECT is all it
+         asks for. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" />
 
     <!-- Android 11 and earlier. -->
     <uses-permission android:name="android.permission.BLUETOOTH"

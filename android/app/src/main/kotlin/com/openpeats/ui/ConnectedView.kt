@@ -32,6 +32,27 @@ private val TRANSPARENCY_LABELS = mapOf(
     TransparencyLevel.STANDARD to R.string.transparency_standard,
 )
 
+// Names of the features the refresh can find absent, keyed like
+// DeviceState.unsupported. A key missing here still shows, raw, rather than
+// vanishing from the list.
+private val FEATURE_LABELS = mapOf(
+    "batteryLeft" to R.string.feature_battery_left,
+    "batteryRight" to R.string.feature_battery_right,
+    "batteryCase" to R.string.feature_battery_case,
+    "firmware" to R.string.feature_firmware,
+    "ancMode" to R.string.feature_anc_mode,
+    "ancLevel" to R.string.feature_anc_level,
+    "transparencyLevel" to R.string.feature_transparency_level,
+    "gameMode" to R.string.feature_game_mode,
+    "multipoint" to R.string.feature_multipoint,
+    "ldac" to R.string.feature_ldac,
+    "leAudio" to R.string.feature_le_audio,
+    "touchDisabled" to R.string.feature_touch_disabled,
+    "promptVolume" to R.string.feature_prompt_volume,
+    "voicePack" to R.string.feature_voice_pack,
+    "keyMappings" to R.string.feature_key_mappings,
+)
+
 // Voice prompt languages are endonyms: they read the same whatever the
 // interface language is, so they stay out of the resources.
 private val VOICE_PACKS = listOf(
@@ -195,7 +216,10 @@ fun ConnectedView(vm: DeviceViewModel, s: DeviceState) {
     if (s.unsupported.isNotEmpty()) {
         Section(stringResource(R.string.section_unsupported)) {
             Text(
-                s.unsupported.sorted().joinToString(" · "),
+                s.unsupported
+                    .map { key -> FEATURE_LABELS[key]?.let { stringResource(it) } ?: key }
+                    .sorted()
+                    .joinToString(" · "),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
