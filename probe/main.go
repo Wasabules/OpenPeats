@@ -421,7 +421,9 @@ func exchange(fd int, cmd [2]byte, payload []byte, vendor [2]byte,
 	return nil, lastRaw
 }
 
-// scanChannels looks for RFCOMM channels that accept a connection.
+// scanChannels looks for RFCOMM channels that accept a connection. Every
+// connection is closed right away: this is the -scan listing, not a way to pick
+// a channel to talk on (see firstOpenChannel).
 func scanChannels(addr [6]byte, max int, timeout time.Duration) []uint8 {
 	var found []uint8
 	for ch := 1; ch <= max; ch++ {
@@ -437,9 +439,26 @@ func scanChannels(addr [6]byte, max int, timeout time.Duration) []uint8 {
 	return found
 }
 
+// firstOpenChannel sweeps the channels and keeps the first connection that
+// succeeds. Closing it to reopen the same channel straight after would fail:
+// the earbuds refuse an immediate reconnection until the previous RFCOMM
+// session is torn down — the trap the client's dialAny avoids the same way.
+func firstOpenChannel(addr [6]byte, max int, timeout time.Duration) (int, uint8, error) {
+	for ch := 1; ch <= max; ch++ {
+		fd, err := connectRFCOMM(addr, uint8(ch), timeout)
+		if err == nil {
+			return fd, uint8(ch), nil
+		}
+		if !errors.Is(err, syscall.ECONNREFUSED) {
+			fmt.Printf("  channel %2d: %v\n", ch, err)
+		}
+	}
+	return -1, 0, errors.New("no open RFCOMM channel")
+}
+
 func main() {
 	var (
-		addrStr    = flag.String("addr", "98:80:BB:40:D4:ED", "MAC address of the earbuds")
+		addrStr    = flag.String("addr", "", "MAC address of the earbuds (required)")
 		channel    = flag.Int("channel", 0, "RFCOMM channel (0 = auto-discovery)")
 		cmdStr     = flag.String("cmd", "0306", "2-byte hex command(s), comma separated")
 		payloadStr = flag.String("payload", "", "hex payload (applied to every command)")
@@ -457,15 +476,19 @@ func main() {
 	)
 	flag.Parse()
 
+	// No default: one would point every run at a particular pair of earbuds.
+	if strings.TrimSpace(*addrStr) == "" {
+		fmt.Fprintln(os.Stderr, "error: -addr is required (e.g. -addr AA:BB:CC:DD:EE:FF)")
+		os.Exit(2)
+	}
 	addr, err := parseMAC(*addrStr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
 	}
 
-	// --- Channel discovery ---
-	ch := uint8(*channel)
-	if *scan || ch == 0 {
+	// --- Channel listing only ---
+	if *scan {
 		fmt.Printf("Discovering RFCOMM channels on %s (1..%d)...\n", *addrStr, *maxChan)
 		found := scanChannels(addr, *maxChan, *connTO)
 		if len(found) == 0 {
@@ -474,10 +497,7 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("Open channels: %v\n", found)
-		if *scan {
-			return
-		}
-		ch = found[0]
+		return
 	}
 
 	// --- Commands + read-only guard ---
@@ -527,10 +547,24 @@ func main() {
 	}
 
 	// --- Connection (a single one, reused) ---
-	fd, err := connectRFCOMM(addr, ch, *connTO)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "connection failed:", err)
-		os.Exit(1)
+	// Commands are validated first, so a refused command never costs a
+	// connection.
+	ch := uint8(*channel)
+	var fd int
+	if ch == 0 {
+		fmt.Printf("Looking for an open RFCOMM channel on %s (1..%d)...\n", *addrStr, *maxChan)
+		fd, ch, err = firstOpenChannel(addr, *maxChan, *connTO)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "\nNo open RFCOMM channel.")
+			fmt.Fprintln(os.Stderr, "Are the earbuds powered on and out of their case?")
+			os.Exit(1)
+		}
+	} else {
+		fd, err = connectRFCOMM(addr, ch, *connTO)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "connection failed:", err)
+			os.Exit(1)
+		}
 	}
 	defer syscall.Close(fd)
 	fmt.Printf("Connected on channel %d.\n", ch)
