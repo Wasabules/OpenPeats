@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Frame header.
@@ -217,6 +218,15 @@ func (f Frame) Scalar() byte {
 	return f.Payload[len(f.Payload)-1]
 }
 
+// Firmware decodes the version reply (03 09): one status byte, then ASCII.
+// Trailing NUL and space padding is dropped.
+func (f Frame) Firmware() string {
+	if len(f.Payload) <= 1 {
+		return ""
+	}
+	return strings.TrimRight(string(f.Payload[1:]), "\x00 ")
+}
+
 // Pair is one entry of a list reply.
 type Pair struct {
 	Code   byte `json:"code"`
@@ -288,13 +298,28 @@ type EQBand struct {
 	Q    float64 `json:"q"`
 }
 
+// Equaliser limits. They are the clients' own ranges, not limits read from
+// the firmware — see PROTOCOL.md section 7. EncodeEQBand enforces them, so a
+// value typed out of range can never wrap around its int16 field on its way to
+// the earbuds (q × 4096 overflows from Q = 8).
+const (
+	EQFreqMin = 20
+	EQFreqMax = 20000
+	EQGainMin = -12.0
+	EQGainMax = 12.0
+	EQQMin    = 0.3
+	EQQMax    = 6.0
+)
+
 // EncodeEQBand builds the payload of a single band.
 //
 // Scale factors validated on the wire: freq × 3, gain × 60, q × 4096,
-// masterGain × 60 — all big-endian int16.
+// masterGain × 60 — all big-endian, two bytes. Gains are signed; above
+// 10922 Hz freq × 3 no longer fits an int16 and goes out as the same two
+// bytes read unsigned.
 //
 // v1 packs total and index into a single byte; v2/v3 spread them over two.
-// index is 1-based.
+// index is 1-based. Out-of-range values are clamped to the limits above.
 func EncodeEQBand(total, index int, masterGain float64, b EQBand, v1 bool) []byte {
 	var head []byte
 	if v1 {
@@ -303,11 +328,47 @@ func EncodeEQBand(total, index int, masterGain float64, b EQBand, v1 bool) []byt
 		head = []byte{byte(total), byte(index)}
 	}
 
+	masterGain = clamp(masterGain, EQGainMin, EQGainMax)
+	freq := min(max(b.Freq, EQFreqMin), EQFreqMax)
+	gain := clamp(b.Gain, EQGainMin, EQGainMax)
+	q := clamp(b.Q, EQQMin, EQQMax)
+
 	out := make([]byte, 0, len(head)+8)
 	out = append(out, head...)
 	out = binary.BigEndian.AppendUint16(out, uint16(int16(masterGain*60)))
-	out = binary.BigEndian.AppendUint16(out, uint16(int16(b.Freq*3)))
-	out = binary.BigEndian.AppendUint16(out, uint16(int16(b.Gain*60)))
-	out = binary.BigEndian.AppendUint16(out, uint16(int16(b.Q*4096)))
+	out = binary.BigEndian.AppendUint16(out, uint16(freq*3))
+	out = binary.BigEndian.AppendUint16(out, uint16(int16(gain*60)))
+	out = binary.BigEndian.AppendUint16(out, uint16(int16(q*4096)))
 	return out
+}
+
+// clamp bounds v to [lo, hi]. NaN, which JSON cannot carry but arithmetic can
+// produce, falls back to lo rather than reaching the int16 conversion.
+func clamp(v, lo, hi float64) float64 {
+	if v != v || v < lo {
+		return lo
+	}
+	return min(v, hi)
+}
+
+// eqV1Firmwares lists the firmware families that take the v1 equaliser frame.
+// See PROTOCOL.md section 5.
+var eqV1Firmwares = []string{
+	"CAPSULE3_PROV2", "CAPSULE3_PRO", "WINGS2", "SPACE_PRO",
+	"AIR5_LLITE", "PearClipPro_Ldac", "S15", "S22",
+}
+
+// EQUsesV1 reports whether a firmware takes the v1 equaliser frame.
+//
+// ⚠ Inferred, half of the rule only. PROTOCOL.md section 5 also routes every
+// Qualcomm chip to v1, but nothing on the SPP link tells the chip vendor
+// apart, so only the firmware list is applied, matched as a prefix of the
+// version string. Only the H3 (S5, v2/v3) has been checked on hardware.
+func EQUsesV1(firmware string) bool {
+	for _, code := range eqV1Firmwares {
+		if strings.HasPrefix(firmware, code) {
+			return true
+		}
+	}
+	return false
 }

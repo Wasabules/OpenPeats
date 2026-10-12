@@ -138,8 +138,8 @@ func pct(f peats.Frame) string {
 }
 
 func firmware(f peats.Frame) string {
-	if len(f.Payload) > 1 {
-		return strings.TrimRight(string(f.Payload[1:]), "\x00")
+	if fw := f.Firmware(); fw != "" {
+		return fw
 	}
 	return i18n.T("value.unknown")
 }

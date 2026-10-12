@@ -1,0 +1,108 @@
+{
+  "about": "Golden vectors for the pure protocol layer, read by both the Go tests (peatsaudio/internal/peats/vectors_test.go) and the Kotlin tests (android/app/src/test/.../VectorsTest.kt). PROTOCOL.md stays the reference: a vector that disagrees with it is a bug in the vector. Bytes are hex strings, spaces ignored. Cases marked 'wire' were captured on or validated against an H3; the others pin down behaviour derived from them.",
+
+  "encode": [
+    { "name": "left battery read (wire)", "command": "0306", "vendor": "000A", "payload": "", "frame": "FF 04 00 00 00 0A 03 06" },
+    { "name": "ANC mode write, one-byte payload (wire)", "command": "0311", "vendor": "000A", "payload": "01", "frame": "FF 04 00 01 00 0A 03 11 01" },
+    { "name": "EQ band, own vendor id (wire)", "command": "0E02", "vendor": "001D", "payload": "01 01 0000 012C 0168 1000", "frame": "FF 04 00 0A 00 1D 0E 02 01 01 00 00 01 2C 01 68 10 00" }
+  ],
+
+  "response": [
+    { "command": "0306", "response": "8306" },
+    { "command": "0310", "response": "8310" },
+    { "command": "03AA", "response": "83AA" }
+  ],
+
+  "decode": [
+    { "name": "battery reply (wire)", "stream": "FF 03 00 02 00 0A 83 06 00 64",
+      "frames": [ { "version": "03", "flags": "00", "vendor": "000A", "command": "8306", "payload": "00 64" } ],
+      "rest": "" },
+    { "name": "noise before the SOF is dropped", "stream": "AA BB CC FF 03 00 02 00 0A 83 06 00 64",
+      "frames": [ { "version": "03", "flags": "00", "vendor": "000A", "command": "8306", "payload": "00 64" } ],
+      "rest": "" },
+    { "name": "two frames back to back", "stream": "FF 03 00 02 00 0A 83 06 00 64 FF 03 00 02 00 0A 83 23 00 5F",
+      "frames": [
+        { "version": "03", "flags": "00", "vendor": "000A", "command": "8306", "payload": "00 64" },
+        { "version": "03", "flags": "00", "vendor": "000A", "command": "8323", "payload": "00 5F" }
+      ],
+      "rest": "" },
+    { "name": "truncated frame waits for more bytes", "stream": "FF 03 00 02 00 0A 83 06",
+      "frames": [], "rest": "FF 03 00 02 00 0A 83 06" },
+    { "name": "noise then a partial header", "stream": "12 34 FF 03 00 02 00 0A 83",
+      "frames": [], "rest": "FF 03 00 02 00 0A 83" },
+    { "name": "complete frame then the start of the next", "stream": "FF 03 00 02 00 0A 83 07 00 64 FF 03 00",
+      "frames": [ { "version": "03", "flags": "00", "vendor": "000A", "command": "8307", "payload": "00 64" } ],
+      "rest": "FF 03 00" },
+    { "name": "noise only", "stream": "AA BB", "frames": [], "rest": "" },
+    { "name": "EQ acknowledgement answers 0F 82, not 8E 02 (wire)", "stream": "FF 03 00 01 00 1D 0F 82 01",
+      "frames": [ { "version": "03", "flags": "00", "vendor": "001D", "command": "0F82", "payload": "01" } ],
+      "rest": "" }
+  ],
+
+  "scalar": [
+    { "name": "battery 100% (wire)", "payload": "00 64", "value": 100 },
+    { "name": "case battery 95% (wire)", "payload": "00 5F", "value": 95 },
+    { "name": "one-byte payload", "payload": "01", "value": 1 },
+    { "name": "empty payload", "payload": "", "value": 0 }
+  ],
+
+  "pairs": [
+    { "name": "ANC sub-mode, indoor active (wire)", "payload": "00 11 00 12 01 13 00 14 00",
+      "pairs": [ { "code": "11", "active": false }, { "code": "12", "active": true }, { "code": "13", "active": false }, { "code": "14", "active": false } ],
+      "active": "12" },
+    { "name": "ANC sub-mode after writing 14 (wire)", "payload": "00 11 00 12 00 13 00 14 01",
+      "pairs": [ { "code": "11", "active": false }, { "code": "12", "active": false }, { "code": "13", "active": false }, { "code": "14", "active": true } ],
+      "active": "14" },
+    { "name": "transparency level, standard active (wire)", "payload": "00 01 00 02 01",
+      "pairs": [ { "code": "01", "active": false }, { "code": "02", "active": true } ],
+      "active": "02" },
+    { "name": "no entry flagged active", "payload": "00 01 00 02 00",
+      "pairs": [ { "code": "01", "active": false }, { "code": "02", "active": false } ],
+      "active": null },
+    { "name": "too short to hold a pair", "payload": "00 11", "pairs": [], "active": null }
+  ],
+
+  "keyMappings": [
+    { "name": "H3 factory mapping (wire)", "payload": "00 01 02 02 01 03 03 04 03 05 04 06 08 07 07 08 06",
+      "mappings": [
+        { "gesture": "01", "action": "02" }, { "gesture": "02", "action": "01" },
+        { "gesture": "03", "action": "03" }, { "gesture": "04", "action": "03" },
+        { "gesture": "05", "action": "04" }, { "gesture": "06", "action": "08" },
+        { "gesture": "07", "action": "07" }, { "gesture": "08", "action": "06" }
+      ] },
+    { "name": "too short to hold a mapping", "payload": "00 01", "mappings": [] }
+  ],
+
+  "encodeKeyMappings": [
+    { "name": "header byte then pairs (unverified on the wire)", "mappings": [ { "gesture": "01", "action": "02" }, { "gesture": "02", "action": "01" } ], "payload": "00 01 02 02 01" },
+    { "name": "no mapping", "mappings": [], "payload": "00" }
+  ],
+
+  "firmware": [
+    { "name": "H3 version string (wire)", "payload": "00 53 35 5F 32 30 32 35 30 36 30 35 5F 56 30 2E 34 2E 39", "firmware": "S5_20250605_V0.4.9" },
+    { "name": "trailing NUL padding is dropped", "payload": "00 53 35 5F 56 31 00 00", "firmware": "S5_V1" },
+    { "name": "trailing spaces are dropped", "payload": "00 53 35 5F 56 31 20 20", "firmware": "S5_V1" },
+    { "name": "status byte only", "payload": "00", "firmware": "" },
+    { "name": "empty payload", "payload": "", "firmware": "" }
+  ],
+
+  "eqBand": [
+    { "name": "+6 dB at 100 Hz, Q 1 (wire)", "total": 1, "index": 1, "masterGain": 0, "band": { "freq": 100, "gain": 6, "q": 1.0 }, "v1": false, "payload": "01 01 0000 012C 0168 1000" },
+    { "name": "v1 packs total and index into one byte", "total": 3, "index": 2, "masterGain": 0, "band": { "freq": 100, "gain": 0, "q": 1.0 }, "v1": true, "payload": "32 0000 012C 0000 1000" },
+    { "name": "negative gain, fractional Q truncated", "total": 10, "index": 3, "masterGain": 0, "band": { "freq": 250, "gain": -3.5, "q": 0.7 }, "v1": false, "payload": "0A 03 0000 02EE FF2E 0B33" },
+    { "name": "v1 with master gain", "total": 2, "index": 1, "masterGain": 1.5, "band": { "freq": 1000, "gain": -12, "q": 1.41 }, "v1": true, "payload": "21 005A 0BB8 FD30 168F" },
+    { "name": "16 kHz: freq x 3 exceeds int16, sent as the same two bytes", "total": 10, "index": 10, "masterGain": -2.5, "band": { "freq": 16000, "gain": 12, "q": 6 }, "v1": false, "payload": "0A 0A FF6A BB80 02D0 6000" },
+    { "name": "values above the limits are clamped", "total": 1, "index": 1, "masterGain": -15, "band": { "freq": 25000, "gain": 20, "q": 9 }, "v1": false, "payload": "01 01 FD30 EA60 02D0 6000" },
+    { "name": "values below the limits are clamped", "total": 1, "index": 1, "masterGain": 0, "band": { "freq": 5, "gain": -20, "q": 0 }, "v1": false, "payload": "01 01 0000 003C FD30 04CC" }
+  ],
+
+  "eqUsesV1": [
+    { "firmware": "S5_20250605_V0.4.9", "v1": false },
+    { "firmware": "S15_20240101_V1.0", "v1": true },
+    { "firmware": "S22", "v1": true },
+    { "firmware": "WINGS2_V3", "v1": true },
+    { "firmware": "CAPSULE3_PRO", "v1": true },
+    { "firmware": "s15", "v1": false },
+    { "firmware": "", "v1": false }
+  ]
+}

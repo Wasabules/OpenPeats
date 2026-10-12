@@ -210,6 +210,11 @@ Source: `jadx-out/sources/…/data/enums/FunctionStatusEnum.java`
 | `ANC_LEVEL_ADAPTIVE_NOISE_REDUCTION` | `15` |
 | `ANC_LEVEL_ANTI_WIND_NOISE` | `16` |
 
+⚠ The enum names `11` `NORMAL_MODE` and keeps a separate `15` for adaptive
+cancellation, yet on the H3 the official UI labels the `11` entry *adaptive
+cancellation* (section 7, list replies). Both implementations follow the
+label: `11` is called adaptive. `15` never appeared in an H3 reply.
+
 **Transparency levels** (payload of `03 4D`) — `VOICE_ENHANCE` = `01`,
 `STANDARD_TRANSPARENT` = `02`
 
@@ -250,6 +255,15 @@ then, all big-endian int16:
 ```
 
 `index` is **1-based** (the caller passes `index + 1`).
+
+**Value ranges.** Both clients clamp before encoding: freq 20–20000 Hz, gain
+and masterGain −12…+12 dB, Q 0.3–6. ⚠ These are the clients' own limits, the
+ranges their UIs offer, not limits read from the firmware. What they do
+guarantee is that no value wraps around its field: `q × 4096` overflows an
+int16 from Q = 8. Above 10922 Hz `freq × 3` no longer fits an int16 either;
+it goes out as the same two bytes read unsigned (16 kHz → `BB 80`). ⚠ Whether
+the firmware reads it unsigned is unverified — only 100 Hz was tested on the
+wire.
 
 ### Version selection
 
@@ -327,12 +341,16 @@ useful value sits in the **last** byte.
 | `03 06` left battery | `FF 03 00 02 00 0A 83 06 00 64` | 100% |
 | `03 07` right battery | `… 83 07 00 64` | 100% |
 | `03 23` case battery | `… 83 23 00 5F` | 95% |
-| `03 09` firmware | `… 83 09 00` + ASCII | `S5_20250605_V0.4.9` |
+| `03 09` firmware | `… 83 09 00` + ASCII | `S5_20250605_V0.4.9` (¹) |
 | `03 10` ANC mode | `… 83 10 00 02` | `02` = transparency |
 | `03 38` LDAC | `… 83 38 00 01` | on |
 | `03 35` LE Audio | `… 83 35 00 00` | off |
 | `03 0E` game mode | `… 83 0E 00 00` | off |
 | `03 14` multipoint | `… 83 14 00 00` | off |
+
+(¹) The leading `00` is a status byte, not part of the version. Both clients
+also drop trailing NUL and space padding, so a fixed-width field cannot leak
+into the firmware-prefix match of section 5.
 
 **Cross-validation**: `03 38` reports "LDAC on", which matches the LDAC codec
 actually negotiated over A2DP (`api.bluez5.codec = "ldac"`, BlueZ transport
@@ -362,9 +380,11 @@ that genuinely looks absent from the H3.
 
 **`83 24` ANC level** — `0011 0012 0113 0014 00`
 
-`[active, code]` pairs: `01 13` → active mode =
-`ANC_LEVEL_OUTDOOR_NOISE_REDUCTION`. The codes `11`, `12`, `13`, `14` do match
-the scene modes of section 4.
+First read as `[active, code]` pairs, which made `01 13` the active mode
+(outdoor). **That reading was wrong**: writing showed the layout is one header
+byte then `(code, active)` pairs — see *List replies* below — so this reply
+says `12` (indoor) is active. The codes `11`, `12`, `13`, `14` do match the
+scene modes of section 4.
 
 **`83 4C` transparency level** — `00 01 00 02 01` (structure not yet worked
 out at that point; resolved below).
@@ -504,6 +524,21 @@ supported features on a full sweep).
 
 Firmware `S5`: absent from the `needInParallel()` list (which holds `S15`,
 `S22`…) → **EQ v2/v3**, as inferred in section 5. Later validated on writes.
+
+⚠ The clients apply **half of that rule**. Nothing on the SPP link tells the
+chip vendor apart, so the Qualcomm branch cannot be evaluated; only the
+firmware list is, matched as a prefix of the version string (`S15_…`). A
+Qualcomm model outside the list would get v2/v3 — untested, since the H3 is
+the only model checked.
+
+### Test vectors
+
+`testvectors/protocol.json` turns this section into byte-level cases: frame
+encoding and decoding, list replies, the firmware string, EQ bands and the
+v1 selection. The Go and Kotlin test suites both read that file, so a case
+added there checks the two implementations at once. Cases marked *wire* come
+from the captures above; a vector that disagrees with this document is a bug
+in the vector.
 
 ---
 

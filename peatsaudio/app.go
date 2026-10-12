@@ -516,9 +516,8 @@ func (a *App) Refresh() {
 
 	if f, err := c.Get(peats.CmdFirmware); err == nil {
 		supported["firmware"] = true
-		// One status byte, then the version in ASCII.
-		if len(f.Payload) > 1 {
-			s.Firmware = strings.TrimRight(string(f.Payload[1:]), "\x00")
+		if fw := f.Firmware(); fw != "" {
+			s.Firmware = fw
 		}
 	} else {
 		supported["firmware"] = false
@@ -805,9 +804,8 @@ func (a *App) SetKeyMappings(ms []peats.KeyMapping) {
 
 // ApplyEQ applies a parametric curve.
 //
-// The firmware decides the EQ protocol version: v1 for Qualcomm chips and a
-// hard-coded firmware list, v2/v3 otherwise. The H3 (firmware "S5") uses
-// v2/v3. The returned Message is empty on success.
+// The firmware decides the EQ protocol version (see peats.EQUsesV1): the H3
+// (firmware "S5") uses v2/v3. The returned Message is empty on success.
 func (a *App) ApplyEQ(bands []peats.EQBand, masterGain float64) Message {
 	c := a.conn()
 	if c == nil {
@@ -821,21 +819,11 @@ func (a *App) ApplyEQ(bands []peats.EQBand, masterGain float64) Message {
 	return Message{}
 }
 
-// eqUsesV1 mirrors needInParallel() from the Android app.
+// eqUsesV1 picks the EQ frame version from the firmware read on refresh.
 func (a *App) eqUsesV1() bool {
 	a.mu.RLock()
-	fw := a.state.Firmware
-	a.mu.RUnlock()
-
-	for _, code := range []string{
-		"CAPSULE3_PROV2", "CAPSULE3_PRO", "WINGS2", "SPACE_PRO",
-		"AIR5_LLITE", "PearClipPro_Ldac", "S15", "S22",
-	} {
-		if strings.HasPrefix(fw, code) {
-			return true
-		}
-	}
-	return false
+	defer a.mu.RUnlock()
+	return peats.EQUsesV1(a.state.Firmware)
 }
 
 // ---------------------------------------------------------------- advanced
