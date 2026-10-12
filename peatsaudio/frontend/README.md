@@ -6,6 +6,8 @@ Wails; there is no standalone deployment.
 ```bash
 npm install
 npm run build     # produces dist/, which main.go embeds
+npm run check     # svelte-check, against the generated bindings
+npm run check:locales  # catalogue parity, and the keys Go emits
 npm run dev       # only useful under `wails dev`
 ```
 
@@ -26,7 +28,8 @@ restores the file after each build, since vite empties `outDir`.
 ```
 src/App.svelte        window shell: top bar, tabs, panels
 src/lib/i18n.js       translation store (~60 lines, no dependency)
-src/lib/*.svelte      Card, Toggle, Segmented, EQEditor, TouchPanel
+src/lib/*.svelte      Card, Toggle, Segmented, EQEditor, TouchPanel,
+                      StatusBar, AdvancedPanel
 src/locales/en.json   source language — the reference catalogue
 src/locales/fr.json   translation, falls back to English key by key
 src/style.css         theme variables and shared element styles

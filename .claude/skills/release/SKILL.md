@@ -87,7 +87,8 @@ nothing to read.
 
 ## 3. Verify the tree
 
-CI covers this too, but a broken release is public. Run it locally first.
+CI covers this too — the release workflow even runs it again before building —
+but a red run costs a deleted tag. Run it locally first.
 
 ```bash
 cd peatsaudio
@@ -96,7 +97,7 @@ go vet ./internal/... ./cmd/...
 go test ./internal/...
 
 cd frontend
-npm ci && npm run build && npm run check:locales
+npm ci && npm run check && npm run build && npm run check:locales
 
 cd .. && go vet .                       # only resolves once frontend/dist exists
 wails build                             # Linux: wails build -tags webkit2_41
@@ -106,6 +107,16 @@ wails build                             # Linux: wails build -tags webkit2_41
 cd probe
 gofmt -l .
 GOOS=linux go vet ./...                 # the module is //go:build linux
+
+cd android
+./gradlew :app:testDebugUnitTest :app:assembleRelease
+```
+
+When the packaging itself changed (release.yml, the installer, the .deb), a
+dry run builds every artefact on the real runners without tagging anything:
+
+```bash
+gh workflow run Release -f version=0.3.0 -f dry_run=true
 ```
 
 If `frontend/wailsjs/` is missing (it is git-ignored), regenerate it with
@@ -143,8 +154,9 @@ Order matters. Push the branch first: a tag pointing at a commit that is not on
 git push origin main
 ```
 
-Wait for CI to go green before tagging. It costs about four minutes and it is
-the last point at which a mistake is still private:
+Wait for CI to go green before tagging. The release workflow runs CI again and
+refuses to build on a failure, but by then the tag is public and has to be
+deleted; waiting here costs about four minutes:
 
 ```bash
 gh run watch "$(gh run list --workflow CI --branch main --limit 1   --json databaseId -q '.[0].databaseId')" --exit-status

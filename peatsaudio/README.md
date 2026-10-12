@@ -53,13 +53,17 @@ run: it exercises connection, reads and writes without depending on Wails.
 ## Architecture
 
 ```
-internal/peats/protocol.go     frames, opcodes, EQ encoding — pure, no I/O
-internal/peats/client.go       exchanges, retry, channel discovery — no OS
-internal/peats/transport.go    rfcommConn interface + var dialRFCOMM
+internal/peats/protocol.go     frames, opcodes, EQ encoding and limits — pure, no I/O
+internal/peats/client.go       exchanges, retry, callbacks — no OS
+internal/peats/transport.go    rfcommConn interface, var dialRFCOMM, channel sweep
 internal/peats/transport_*.go  one implementation per OS, chosen by build tag
 internal/i18n/                 catalogue for what Go renders itself
 message.go                     Message: the {key, args} pairs Go emits
-app.go                         application state + Wails-bound methods
+app.go                         application state, lifecycle, language
+session.go                     connect, disconnect, recovery after a reboot
+features.go                    feature table: refresh, writes, EQ, raw frames
+battery.go                     level polling and low-battery alerts
+settings.go                    what survives a restart (the last address)
 frontend/src/                  Svelte interface
 frontend/src/locales/          UI catalogues (source of truth: en.json)
 ```
@@ -163,9 +167,10 @@ the application only.
 Everything is confirmed on the wire **except** what the interface marks
 "unverified":
 
-- **writing** the touch mapping (reading it is validated);
-- the **touch debug mode** (`CUSTOMIZE_TOUCH_DEMO`), inferred from the Android
-  app.
+- **writing** the touch mapping (reading it is validated).
+
+The touch debug mode (`CUSTOMIZE_TOUCH_DEMO`) was tested and dropped: the H3
+acknowledges it but never reports a tap.
 
 The rest — ANC, sub-modes, transparency, batteries, firmware, LDAC, multipoint,
 LE Audio, game mode, touch lockout, voice prompts, equaliser — was exercised on
@@ -178,5 +183,7 @@ detection, light effect, movie mode, panoramic sound, dynamic EQ, dynamic bass,
 Dolby, spatial effect, per-ear volume, personalised volume, adaptive volume,
 water drain, fall detection, privacy mode.
 
-Other SoundPEATS models sharing this protocol should expose them: the
-application queries every feature and only shows what answers.
+Other SoundPEATS models sharing this protocol may expose them. The
+application queries every feature it has a control for and only shows what
+answers; supporting one of these means adding it to the feature table in
+`features.go`, plus its UI.

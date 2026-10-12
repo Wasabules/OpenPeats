@@ -46,8 +46,9 @@ RFCOMM/SPP, sans dépendance à l'interface.
 - Lecture du mapping des commandes tactiles
 - Console de trames brutes pour l'exploration
 
-L'application interroge chaque fonction au démarrage et grise ce qui ne répond
-pas : elle s'adapte donc aux modèles qui exposent un sous-ensemble différent.
+L'application interroge chaque fonction qu'elle sait piloter et grise ce qui ne
+répond pas : elle s'adapte donc aux modèles qui exposent un sous-ensemble
+différent.
 
 ## Installation
 

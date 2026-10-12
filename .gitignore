@@ -56,9 +56,20 @@ android/build/
 android/app/build/
 android/local.properties
 android/.idea/
+android/.kotlin/
 *.iml
-android/keystore.jks
 
-# Compiled binaries at the root
+# Signing keys, wherever they land: a release keystore in git would let anyone
+# sign an update that installs over ours.
+*.jks
+*.keystore
+
+# peatsctl, built where CLAUDE.md says to build it (cd peatsaudio) or at the
+# root.
 /peatsctl
 /peatsctl.exe
+peatsaudio/peatsctl
+peatsaudio/peatsctl.exe
+
+# Worktrees Claude Code creates for parallel agents.
+.claude/worktrees/

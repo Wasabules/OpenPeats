@@ -41,8 +41,8 @@ transport, with no dependency on the interface.
 - Reading of the touch control mapping
 - Raw frame console for exploration
 
-The application queries every feature on startup and dims what does not answer,
-so it adapts to models exposing a different subset.
+The application queries every feature it has a control for and dims what does
+not answer, so it adapts to models exposing a different subset.
 
 ## Install
 

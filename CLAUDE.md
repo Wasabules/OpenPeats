@@ -45,8 +45,20 @@ enough.
 ```bash
 cd peatsaudio
 go test ./internal/... -v                          # unit tests, no hardware
-go test ./internal/peats -run TestEncodeEQBand -v  # a single test
+go test ./internal/peats -run TestVectorsEQBand -v  # a single test
 PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v   # needs the earbuds
+```
+
+The pure protocol layer is pinned down by `testvectors/protocol.json`, which
+the Go tests (`vectors_test.go`) and the Kotlin tests (`VectorsTest.kt`) both
+read. A protocol change goes into `PROTOCOL.md`, then into a vector, then into
+both implementations — the vector is what proves the two still agree. The
+client's exchange rules (never retry a write, the ack opcodes, the EQ vendor)
+are tested against a fake transport in `client_test.go`.
+
+```bash
+cd peatsaudio/frontend && npm run check     # svelte-check against the bindings
+cd android && ./gradlew :app:testDebugUnitTest
 ```
 
 `frontend/dist/.gitkeep` is tracked on purpose: `main.go` does
@@ -95,11 +107,17 @@ i18n.
 ### CI/CD (`.github/workflows/`)
 
 `ci.yml` runs on every push and pull request: Go vet and tests on Linux and
-Windows, catalogue parity, frontend build, Android debug build.
+Windows (race detector on Linux), catalogue parity including the keys Go
+emits, svelte-check and the frontend build, Android unit tests, debug and
+release builds. Third-party actions are pinned to commit SHAs; Dependabot
+updates them. Shared Go/Node/WebKit/Wails setup lives in
+`.github/actions/setup-desktop`.
 
 `release.yml` runs on a `v*` tag and produces the Linux, Windows and Android
-artefacts plus `SHA256SUMS`. Version numbers come from the tag; nothing is
-hard-coded in the build files.
+artefacts plus `SHA256SUMS`. It runs the whole of `ci.yml` first, so a red
+commit never publishes. Version numbers come from the tag; nothing is
+hard-coded in the build files. A manual run with `dry_run` builds every
+artefact and publishes nothing.
 
 The release body is the `CHANGELOG.md` section matching the tag, so a version
 needs its entry written before it is tagged — the publish job fails otherwise
@@ -123,13 +141,17 @@ that distinction: it is what makes the document trustworthy.
 ### Layers (Go)
 
 ```
-internal/peats/protocol.go     frames, opcodes, EQ encoding — pure, no I/O
-internal/peats/client.go       exchanges, retry, channel discovery — no OS
-internal/peats/transport.go    rfcommConn interface + var dialRFCOMM
+internal/peats/protocol.go     frames, opcodes, EQ encoding and limits — pure, no I/O
+internal/peats/client.go       exchanges, retry, callbacks — no OS
+internal/peats/transport.go    rfcommConn interface, var dialRFCOMM, channel sweep
 internal/peats/transport_*.go  one implementation per OS, chosen by build tag
 internal/i18n/                 catalogue for what Go renders itself
 message.go                     Message: the {key, args} pairs Go emits
-app.go                         application state + Wails-bound methods
+app.go                         application state, lifecycle, language
+session.go                     connect, disconnect, recovery after a reboot
+features.go                    feature table: refresh, writes, EQ, raw frames
+battery.go                     level polling and low-battery alerts
+settings.go                    what survives a restart (the last address)
 frontend/src/                  Svelte interface
 ```
 
@@ -140,7 +162,7 @@ implementing `rfcommConn` + `isTimeout`; nothing else moves.
 
 ### The i18n boundary between Go and the frontend
 
-Go **never sends display text across the Wails boundary**. `app.go` emits
+Go **never sends display text across the Wails boundary**. The App emits
 `Message{Key, Args}` values and the frontend renders them from its own
 catalogue. Keeping one catalogue per renderer means a string is never
 translated twice in two places that could drift apart.
@@ -194,13 +216,17 @@ These silently break any client that ignores them. They are detailed in
 ## Conventions
 
 **Feature detection rather than a hard-coded list.** `App.Refresh()` queries
-every feature and fills `State.Supported`; the frontend dims whatever does not
-answer. The H3 only exposes 16 commands out of 31 — other models will expose
-others. Never hard-code a model's capabilities.
+every entry of the feature table in `features.go` and fills `State.Supported`;
+the frontend dims whatever does not answer. Only a timeout counts as absent: a
+link that drops mid-refresh leaves the map alone. The table holds the features
+the UI can control — the H3 answers 16 commands out of 31, and the ones it
+lacks (in-ear detection, Dolby…) have no entry yet, so another model exposing
+them needs an entry plus its UI. Never hard-code a model's capabilities.
 
 **Mark what is not verified.** The code explicitly flags the unconfirmed
-(writing the touch mapping, `CUSTOMIZE_TOUCH_DEMO`), and the UI carries that
-through. Keep those warnings until hardware settles them.
+(writing the touch mapping, the EQ v1 selection, the Linux unreachable
+mapping), and the UI carries that through where it shows. Keep those warnings
+until hardware settles them.
 
 **Destructive commands** (`CmdReset`, `CmdReboot`): never sent without explicit
 user confirmation.
