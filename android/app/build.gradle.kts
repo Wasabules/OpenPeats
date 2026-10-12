@@ -11,9 +11,11 @@ plugins {
 val appVersionName = (findProperty("openpeats.versionName") as String?) ?: "0.1.0"
 val appVersionCode = ((findProperty("openpeats.versionCode") as String?) ?: "1").toInt()
 
-// Release signing is optional on purpose. Without a keystore the build still
-// produces an unsigned APK, so a fork with no secrets configured can run the
-// exact same workflow and get an artefact out of it.
+// Release signing is optional on purpose. Without a keystore the release build
+// falls back to the debug key, so a fork with no secrets configured can run the
+// exact same workflow and still get an APK that installs. That key is generated
+// per machine — on CI, per run — so two such builds cannot update one another:
+// published releases need the real keystore.
 val keystorePath = findProperty("openpeats.keystore") as String?
 
 android {

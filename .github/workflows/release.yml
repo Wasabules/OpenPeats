@@ -277,8 +277,9 @@ jobs:
 
       - run: chmod +x android/gradlew
 
-      # Signing is optional: a fork with no secrets still gets an unsigned APK
-      # out of this workflow rather than a failed run.
+      # The release key is optional: a fork with no secrets gets an APK signed
+      # with the debug key rather than a failed run. The runner creates that key
+      # on the spot, so such an APK installs but cannot update a previous one.
       - name: Prepare the signing key
         id: signing
         env:
@@ -288,7 +289,7 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.jks"
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — publishing an unsigned APK"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — signing with this runner's throwaway debug key; the APK will not update a previous install"
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 

@@ -182,11 +182,11 @@ Report the release URL to the user.
 - **Never edit a version by hand.** Not `wails.json`'s `productVersion`, not
   the Android `versionName` or `versionCode`. The workflow stamps them from the
   tag; an edited file is drift waiting to happen.
-- **The APK ships unsigned** unless the `ANDROID_KEYSTORE_BASE64` secret is set,
-  and its filename gains an `-unsigned` suffix. The platform table in
-  `release.yml` still names `openpeats-<version>.apk`, so the link and the asset
-  disagree. Known, not yet fixed — mention it if the user cares, or offer to
-  make the table follow the signing state.
+- **Without the `ANDROID_KEYSTORE_*` secrets the APK is signed with a debug
+  key** the runner generates on the spot. It installs, but every release then
+  carries a different key, so Android refuses to update one over another: users
+  must uninstall first and lose their settings. Run `gh secret list` before
+  tagging, and if the four secrets are missing, tell the user before going on.
 - **`workflow_dispatch` exists** for re-running a build without a new tag: it
   takes the version as an input and creates the `v<version>` tag itself. Reach
   for it when a release job failed for an infrastructure reason, not to reissue
