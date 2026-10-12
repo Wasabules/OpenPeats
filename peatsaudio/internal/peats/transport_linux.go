@@ -94,12 +94,20 @@ func dialLinux(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn, 
 	return &linuxConn{fd: fd}, nil
 }
 
+// mapLinuxErr translates a connect errno.
+//
+// EHOSTDOWN is BlueZ's verdict when paging the device fails — off, in its
+// case, out of range — so here it means the device is absent. Not so on
+// Windows, where the same name marks a closed channel: the two mappings are
+// not interchangeable. ⚠ Not yet observed on hardware from this transport.
 func mapLinuxErr(errno syscall.Errno) error {
 	switch errno {
 	case syscall.EBUSY:
 		return ErrBusy
 	case syscall.ECONNREFUSED:
 		return ErrRefused
+	case syscall.EHOSTDOWN, syscall.EHOSTUNREACH:
+		return ErrUnreachable
 	default:
 		return errno
 	}

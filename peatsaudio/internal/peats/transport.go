@@ -14,7 +14,7 @@ import (
 //
 //	Linux   AF_BLUETOOTH / BTPROTO_RFCOMM   (transport_linux.go)
 //	Windows AF_BTH / BTHPROTO_RFCOMM        (transport_windows.go)
-//	macOS   IOBluetooth                     (transport_darwin.go)
+//	macOS   IOBluetooth                     (not written yet: transport_stub.go)
 //
 // iOS is out of reach: SPP there is reserved for MFi-certified accessories,
 // which these earbuds are not.
@@ -39,6 +39,12 @@ var dialRFCOMM func(addr [6]byte, channel uint8, timeout time.Duration) (rfcommC
 
 // maxChannel bounds the discovery sweep. RFCOMM channels run from 1 to 30.
 const maxChannel = 30
+
+// maxConsecutiveTimeouts ends the sweep early. A reachable device answers a
+// closed channel at once with a refusal; only an absent one lets every attempt
+// run into the dial timeout, which would otherwise cost 30 × 3 s before saying
+// so. Three rather than one leaves room for a slow first page.
+const maxConsecutiveTimeouts = 3
 
 var (
 	// ErrBusy: the control channel is monopolised by another device.
@@ -98,6 +104,7 @@ func dialAny(addr [6]byte) (rfcommConn, uint8, error) {
 		return nil, 0, ErrUnsupported
 	}
 	sawBusy := false
+	timeouts := 0
 	for ch := uint8(1); ch <= maxChannel; ch++ {
 		c, err := dialRFCOMM(addr, ch, 3*time.Second)
 		if err == nil {
@@ -109,6 +116,13 @@ func dialAny(addr [6]byte) (rfcommConn, uint8, error) {
 		if errors.Is(err, ErrUnreachable) {
 			return nil, 0, err
 		}
+		if errors.Is(err, ErrTimeout) {
+			if timeouts++; timeouts == maxConsecutiveTimeouts {
+				return nil, 0, ErrUnreachable
+			}
+			continue
+		}
+		timeouts = 0
 		if errors.Is(err, ErrBusy) {
 			sawBusy = true
 		}
