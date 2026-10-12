@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /** Candidate paired earbuds. */
 data class PairedDevice(val name: String, val address: String)
@@ -167,6 +168,16 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         val c = RfcommClient.connect(dev) { lost ->
             // Called on the reader's thread: hop back to the main one.
             viewModelScope.launch { onLinkLost(lost) }
+        }
+        // A link that dropped during the settle delay reported it before this
+        // client was published, so onLinkLost ignored it as a stale one. Check
+        // here, on the main thread and with no suspension before `client = c`:
+        // a drop is then either caught by this test or seen by onLinkLost as
+        // the current client — never missed by both. The Go client does the
+        // same with Alive().
+        if (!c.isOpen) {
+            c.close()
+            throw IOException("link closed while settling")
         }
         client = c
         val parent = viewModelScope.coroutineContext[Job]
