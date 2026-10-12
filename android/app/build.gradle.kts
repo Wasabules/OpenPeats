@@ -65,6 +65,7 @@ android {
     }
 
     sourceSets["main"].java.srcDirs("src/main/kotlin")
+    sourceSets["test"].java.srcDirs("src/test/kotlin")
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -76,6 +77,16 @@ android {
         // missing name at once instead of failing on the first.
         disable += "MissingTranslation"
     }
+}
+
+// The protocol vectors are shared with the Go implementation and live at the
+// repository root, outside this Gradle build. Declared as a test input so that
+// editing them reruns the tests instead of replaying a cached result.
+val protocolVectors = rootProject.file("../testvectors/protocol.json")
+
+tasks.withType<Test>().configureEach {
+    inputs.file(protocolVectors)
+    systemProperty("openpeats.vectors", protocolVectors.absolutePath)
 }
 
 dependencies {
@@ -95,4 +106,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Android's own org.json is a stub in local unit tests; this is the real one.
+    testImplementation("org.json:json:20240303")
 }
