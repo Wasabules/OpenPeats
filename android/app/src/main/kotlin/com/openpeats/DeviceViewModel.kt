@@ -14,6 +14,7 @@ import com.openpeats.protocol.Commands
 import com.openpeats.protocol.EqBand
 import com.openpeats.protocol.KeyMapping
 import com.openpeats.protocol.Pair2
+import com.openpeats.protocol.eqUsesV1
 import com.openpeats.transport.RfcommClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -344,18 +345,9 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
     fun applyEq(bands: List<EqBand>, masterGain: Double) = viewModelScope.launch {
         val c = client ?: return@launch
         _state.update { it.copy(busy = true) }
-        c.applyEq(bands, masterGain, eqUsesV1())
+        c.applyEq(bands, masterGain, eqUsesV1(_state.value.firmware))
         logLine(str(R.string.log_eq_applied, bands.size))
         _state.update { it.copy(busy = false) }
-    }
-
-    /** Mirrors needInParallel() from the official application. */
-    private fun eqUsesV1(): Boolean {
-        val fw = _state.value.firmware
-        return listOf(
-            "CAPSULE3_PROV2", "CAPSULE3_PRO", "WINGS2", "SPACE_PRO",
-            "AIR5_LLITE", "PearClipPro_Ldac", "S15", "S22",
-        ).any { fw.startsWith(it) }
     }
 
     override fun onCleared() {

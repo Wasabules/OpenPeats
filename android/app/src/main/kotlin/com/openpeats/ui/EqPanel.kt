@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openpeats.R
 import com.openpeats.protocol.EqBand
+import com.openpeats.protocol.EqLimits
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -31,11 +32,14 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private const val FS = 48000.0
-private const val F_MIN = 20.0
-private const val F_MAX = 20000.0
 private const val DB_RANGE = 12.0
-private const val GAIN_MIN = -12.0
-private const val GAIN_MAX = 12.0
+
+// The ranges come from the protocol layer, which clamps to the same values
+// before encoding: the UI never offers what the encoder would refuse.
+private val F_MIN = EqLimits.FREQ_MIN.toDouble()
+private val F_MAX = EqLimits.FREQ_MAX.toDouble()
+private const val GAIN_MIN = EqLimits.GAIN_MIN
+private const val GAIN_MAX = EqLimits.GAIN_MAX
 
 /** Normalised sets of centre frequencies — the "granularity" of the control. */
 private val GRANULARITY = mapOf(
@@ -200,7 +204,7 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
                             bands = bands.toMutableList()
                                 .also { it[selected] = b.copy(q = v.toDouble()) }
                         },
-                        valueRange = 0.3f..6f,
+                        valueRange = EqLimits.Q_MIN.toFloat()..EqLimits.Q_MAX.toFloat(),
                         enabled = !busy,
                     )
                     Text(
