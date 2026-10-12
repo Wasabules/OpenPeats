@@ -10,6 +10,7 @@ import com.openpeats.protocol.Commands
 import com.openpeats.protocol.EqBand
 import com.openpeats.protocol.Frame
 import com.openpeats.protocol.Protocol
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +37,7 @@ private const val TAG = "OpenPeats"
  */
 class RfcommClient private constructor(
     private val socket: BluetoothSocket,
+    private val onLinkLost: (RfcommClient) -> Unit,
 ) {
     companion object {
         /** A command sent too soon after the link comes up gets no reply. */
@@ -44,36 +46,98 @@ class RfcommClient private constructor(
         private const val TIMEOUT_MS = 1500L
         private const val READ_RETRIES = 3
 
+        /** The SPP channel observed on the H3, for firmwares with no usable SDP record. */
+        private const val FALLBACK_CHANNEL = 11
+
         /**
          * Opens the control connection.
+         *
+         * [onLinkLost] fires, on a background thread, when the link drops
+         * without [close] having been called — typically because the earbuds
+         * rebooted, which LDAC, multipoint and LE Audio all trigger. It is
+         * passed here rather than set afterwards so that a drop during the
+         * settle delay is not missed.
          *
          * @throws IOException if the earbuds are unreachable, or if the
          *   channel is already held by another device (multipoint on).
          */
-        @SuppressLint("MissingPermission")
-        suspend fun connect(device: BluetoothDevice): RfcommClient =
-            withContext(Dispatchers.IO) {
-                val uuid = UUID.fromString(Protocol.SPP_UUID)
-                val socket = try {
-                    device.createRfcommSocketToServiceRecord(uuid)
-                } catch (e: IOException) {
-                    // Fallback: some firmwares expose no usable SDP record.
-                    // Channel 11 is the one observed on the H3.
-                    Log.w(TAG, "SDP unavailable, falling back to the fixed channel", e)
-                    fallbackSocket(device, 11)
+        suspend fun connect(
+            device: BluetoothDevice,
+            onLinkLost: (RfcommClient) -> Unit,
+        ): RfcommClient {
+            // Set from the IO thread once the client exists, so a cancellation
+            // landing as withContext returns can still release it: the result
+            // is dropped then, and nobody else holds the socket.
+            var created: RfcommClient? = null
+            try {
+                return withContext(Dispatchers.IO) {
+                    val c = RfcommClient(openSocket(device), onLinkLost)
+                    created = c
+                    try {
+                        c.startReader()
+                        delay(SETTLE_MS)
+                    } catch (e: Throwable) {
+                        c.close()
+                        throw e
+                    }
+                    c
                 }
-
-                socket.connect()
-                val c = RfcommClient(socket)
-                c.startReader()
-                delay(SETTLE_MS)
-                c
+            } catch (e: CancellationException) {
+                created?.close()
+                throw e
             }
+        }
+
+        /**
+         * Connects through the SPP UUID, then through the fixed channel if that
+         * fails.
+         *
+         * The service lookup (SDP) runs inside `connect()`, not when the socket
+         * is created, so the fallback has to wrap `connect()`. It only runs
+         * after a failed connection: no session was established, so this is
+         * not the close-then-reopen the earbuds refuse.
+         */
+        @SuppressLint("MissingPermission")
+        private fun openSocket(device: BluetoothDevice): BluetoothSocket {
+            val primary = device.createRfcommSocketToServiceRecord(UUID.fromString(Protocol.SPP_UUID))
+            val primaryError = try {
+                primary.connect()
+                return primary
+            } catch (e: IOException) {
+                closeQuietly(primary)
+                e
+            }
+
+            Log.w(TAG, "SPP connection failed, trying channel $FALLBACK_CHANNEL", primaryError)
+            val fallback = try {
+                fallbackSocket(device, FALLBACK_CHANNEL)
+            } catch (e: Exception) {
+                // Reflection refused: the first error is the one worth reporting.
+                primaryError.addSuppressed(e)
+                throw primaryError
+            }
+            try {
+                fallback.connect()
+                return fallback
+            } catch (e: IOException) {
+                closeQuietly(fallback)
+                // The SPP attempt carries the meaningful cause (busy, refused).
+                primaryError.addSuppressed(e)
+                throw primaryError
+            }
+        }
 
         /** `createRfcommSocket(int)` is hidden: reached by reflection. */
         private fun fallbackSocket(device: BluetoothDevice, channel: Int): BluetoothSocket {
             val m = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
             return m.invoke(device, channel) as BluetoothSocket
+        }
+
+        private fun closeQuietly(socket: BluetoothSocket) {
+            try {
+                socket.close()
+            } catch (_: IOException) {
+            }
         }
     }
 
@@ -84,6 +148,13 @@ class RfcommClient private constructor(
     @Volatile
     private var closed = false
 
+    /** Set once the link dropped on its own; [close] still has to be called. */
+    @Volatile
+    private var lost = false
+
+    /** False once the link is gone, whether it dropped or was closed. */
+    val isOpen: Boolean get() = !closed && !lost
+
     /** Receives every frame, spontaneous notifications included. */
     var onFrame: ((Frame) -> Unit)? = null
 
@@ -92,26 +163,37 @@ class RfcommClient private constructor(
             val buf = ByteArray(1024)
             var acc = ByteArray(0)
 
-            while (isActive && !closed) {
-                val n = try {
-                    socket.inputStream.read(buf)
-                } catch (e: IOException) {
-                    if (!closed) Log.w(TAG, "read interrupted", e)
-                    break
-                }
-                if (n <= 0) break
-
-                acc += buf.copyOf(n)
-                while (true) {
-                    val d = Codec.decode(acc, acc.size)
-                    if (d.frame == null) {
-                        // Noise before the SOF: drop it.
-                        if (d.consumed > 0) acc = acc.copyOfRange(d.consumed, acc.size)
+            try {
+                while (isActive && !closed) {
+                    val n = try {
+                        socket.inputStream.read(buf)
+                    } catch (e: IOException) {
+                        if (!closed) Log.w(TAG, "read interrupted", e)
                         break
                     }
-                    acc = acc.copyOfRange(d.consumed, acc.size)
-                    onFrame?.invoke(d.frame)
-                    frames.trySend(d.frame)
+                    if (n <= 0) break
+
+                    acc += buf.copyOf(n)
+                    while (true) {
+                        val d = Codec.decode(acc, acc.size)
+                        if (d.frame == null) {
+                            // Noise before the SOF: drop it.
+                            if (d.consumed > 0) acc = acc.copyOfRange(d.consumed, acc.size)
+                            break
+                        }
+                        acc = acc.copyOfRange(d.consumed, acc.size)
+                        onFrame?.invoke(d.frame)
+                        frames.trySend(d.frame)
+                    }
+                }
+            } finally {
+                // The reader only stops for good: either close() asked for it,
+                // or the link is gone. In the second case, fail the exchanges
+                // in flight now rather than after their timeout, and say so.
+                if (!closed) {
+                    lost = true
+                    frames.close()
+                    onLinkLost(this@RfcommClient)
                 }
             }
         }
@@ -121,10 +203,15 @@ class RfcommClient private constructor(
         while (frames.tryReceive().isSuccess) { /* empty the queue */ }
     }
 
+    /**
+     * Waits for a frame satisfying [match]. Null on timeout, and right away
+     * once the link is gone: a closed channel will never deliver the reply,
+     * and receiving from it would throw into the caller's scope.
+     */
     private suspend fun await(match: (Frame) -> Boolean): Frame? =
         withTimeoutOrNull(TIMEOUT_MS) {
             while (true) {
-                val f = frames.receive()
+                val f = frames.receiveCatching().getOrNull() ?: return@withTimeoutOrNull null
                 if (match(f)) return@withTimeoutOrNull f
             }
             @Suppress("UNREACHABLE_CODE")
@@ -142,6 +229,7 @@ class RfcommClient private constructor(
     suspend fun get(cmd: Command): Frame? = exchangeLock.withLock {
         val want = cmd.response()
         repeat(READ_RETRIES) {
+            if (!isOpen) return null
             drain()
             try {
                 write(Codec.encode(cmd))

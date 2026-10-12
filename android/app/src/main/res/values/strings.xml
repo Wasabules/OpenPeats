@@ -11,6 +11,8 @@
     <string name="permission_required">Bluetooth permission required.</string>
     <string name="paired_earbuds">Paired earbuds</string>
     <string name="no_paired_devices">No paired audio device. Pair your earbuds in the Bluetooth settings, then come back here.</string>
+    <string name="reconnecting">The earbuds are restarting — reconnecting…</string>
+    <string name="action_stop">Stop</string>
     <string name="multipoint_hint">If multipoint is on and another device holds the control channel, connecting will fail: turn Bluetooth off there.</string>
     <string name="connecting">Connecting…</string>
     <!-- Device entry: name followed by its MAC address. -->
@@ -88,6 +90,12 @@
     <string name="section_log">Log</string>
     <string name="log_connected">Connected to %1$s.</string>
     <string name="log_disconnected">Disconnected.</string>
+    <string name="log_link_lost">Link lost.</string>
+    <string name="log_link_lost_reconnecting">Link lost — the earbuds rebooted. Reconnecting…</string>
+    <!-- Attempt number, total attempts, reason. -->
+    <string name="log_reconnect_attempt">Reconnect %1$d/%2$d: %3$s</string>
+    <string name="log_reconnected">Reconnected.</string>
+    <string name="log_reconnect_gave_up">Reconnection failed after %1$d attempts. Start it again by hand.</string>
     <string name="log_failed">Failed: %1$s</string>
     <string name="log_refreshed">Refreshed. %1$d feature(s) absent from this model.</string>
     <string name="log_multipoint_enabling">Enabling multipoint — the firmware will turn LDAC off.</string>

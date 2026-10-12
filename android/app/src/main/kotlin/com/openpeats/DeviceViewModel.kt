@@ -16,6 +16,11 @@ import com.openpeats.protocol.KeyMapping
 import com.openpeats.protocol.Pair2
 import com.openpeats.protocol.eqUsesV1
 import com.openpeats.transport.RfcommClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +34,9 @@ data class PairedDevice(val name: String, val address: String)
 data class DeviceState(
     val connected: Boolean = false,
     val connecting: Boolean = false,
+
+    /** The link dropped on its own and the app is trying to get it back. */
+    val reconnecting: Boolean = false,
     val busy: Boolean = false,
     val error: String? = null,
 
@@ -62,6 +70,12 @@ data class DeviceState(
 
 class DeviceViewModel(app: Application) : AndroidViewModel(app) {
 
+    private companion object {
+        /** The earbuds take a few seconds to come back after a reboot. */
+        const val RECONNECT_DELAY_MS = 3000L
+        const val RECONNECT_ATTEMPTS = 10
+    }
+
     private val _state = MutableStateFlow(DeviceState())
     val state: StateFlow<DeviceState> = _state.asStateFlow()
 
@@ -69,6 +83,22 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
     val log: StateFlow<List<String>> = _log.asStateFlow()
 
     private var client: RfcommClient? = null
+
+    /**
+     * Scope of the current connection. Every exchange runs in it, so closing
+     * the link — by hand or because it dropped — cancels them all: none of
+     * them can then write a stale reply into the state that was just reset.
+     */
+    private var session: CoroutineScope? = null
+
+    private var connectJob: Job? = null
+
+    /**
+     * Address to reconnect to when the link drops on its own. Cleared by an
+     * explicit disconnect: automatic reconnection must not fight a user who
+     * just tapped "Close".
+     */
+    private var wantedAddress: String? = null
 
     private fun adapter(): BluetoothAdapter? =
         (getApplication<Application>()
@@ -86,6 +116,9 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         _log.update { (it + s).takeLast(200) }
     }
 
+    /** Whether the Bluetooth adapter exists and is switched on. */
+    fun bluetoothEnabled(): Boolean = adapter()?.isEnabled == true
+
     /**
      * Paired earbuds. Deliberately not filtered by name: other SoundPEATS
      * models share this protocol, and missing features are detected on
@@ -97,6 +130,8 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
             .filter { it.bluetoothClass?.majorDeviceClass == 0x400 } // AUDIO_VIDEO
             .map { PairedDevice(it.name ?: it.address, it.address) }
 
+    // ----------------------------------------------------------- connection
+
     @SuppressLint("MissingPermission")
     fun connect(address: String) {
         val dev: BluetoothDevice = adapter()?.getRemoteDevice(address) ?: run {
@@ -104,20 +139,15 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
-        viewModelScope.launch {
-            _state.update { it.copy(connecting = true, error = null) }
+        // A manual connection supersedes a reconnection still running.
+        connectJob?.cancel()
+        connectJob = viewModelScope.launch {
+            _state.update { it.copy(connecting = true, reconnecting = false, error = null) }
             try {
-                val c = RfcommClient.connect(dev)
-                client = c
-                _state.update {
-                    it.copy(
-                        connected = true,
-                        connecting = false,
-                        deviceName = dev.name ?: address,
-                    )
-                }
+                open(dev, address)
                 logLine(str(R.string.log_connected, dev.name ?: address))
-                refresh()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
@@ -131,6 +161,29 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Opens the link, starts a session on it and reads the state back. */
+    @SuppressLint("MissingPermission")
+    private suspend fun open(dev: BluetoothDevice, address: String) {
+        val c = RfcommClient.connect(dev) { lost ->
+            // Called on the reader's thread: hop back to the main one.
+            viewModelScope.launch { onLinkLost(lost) }
+        }
+        client = c
+        val parent = viewModelScope.coroutineContext[Job]
+        session = CoroutineScope(viewModelScope.coroutineContext + SupervisorJob(parent))
+        wantedAddress = address
+        _state.update {
+            it.copy(
+                connected = true,
+                connecting = false,
+                reconnecting = false,
+                error = null,
+                deviceName = dev.name ?: address,
+            )
+        }
+        refresh()
+    }
+
     private fun describeError(e: Exception): String {
         val m = e.message.orEmpty()
         return when {
@@ -142,17 +195,79 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun disconnect() {
+    /** Cancels every exchange of the current connection and releases it. */
+    private fun endSession() {
+        session?.cancel()
+        session = null
         client?.close()
         client = null
+    }
+
+    fun disconnect() {
+        wantedAddress = null
+        connectJob?.cancel()
+        connectJob = null
+        endSession()
         _state.update { DeviceState() }
         logLine(str(R.string.log_disconnected))
     }
 
+    /**
+     * The link dropped without being asked to.
+     *
+     * LDAC, multipoint and LE Audio all reboot the earbuds: the control channel
+     * goes down and only comes back a few seconds later. Without this the
+     * screen stayed "connected" on a dead socket, and the next refresh listed
+     * every feature as absent from the model.
+     */
+    @SuppressLint("MissingPermission")
+    private fun onLinkLost(lost: RfcommClient) {
+        if (client !== lost) return // an older link, already replaced or closed
+        endSession()
+
+        val address = wantedAddress
+        val dev = address?.let { adapter()?.getRemoteDevice(it) }
+        _state.update { DeviceState(reconnecting = dev != null) }
+        if (address == null || dev == null) {
+            logLine(str(R.string.log_link_lost))
+            return
+        }
+
+        logLine(str(R.string.log_link_lost_reconnecting))
+        connectJob?.cancel()
+        connectJob = viewModelScope.launch {
+            for (attempt in 1..RECONNECT_ATTEMPTS) {
+                delay(RECONNECT_DELAY_MS)
+                try {
+                    open(dev, address)
+                    logLine(str(R.string.log_reconnected))
+                    return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logLine(
+                        str(R.string.log_reconnect_attempt, attempt, RECONNECT_ATTEMPTS, describeError(e))
+                    )
+                }
+            }
+            _state.update { it.copy(reconnecting = false) }
+            logLine(str(R.string.log_reconnect_gave_up, RECONNECT_ATTEMPTS))
+        }
+    }
+
+    /**
+     * Runs one exchange in the current session. Nothing happens when there is
+     * no connection; the exchange is cancelled if the link goes away.
+     */
+    private fun exchange(block: suspend CoroutineScope.(RfcommClient) -> Unit) {
+        val c = client ?: return
+        val s = session ?: return
+        s.launch { block(c) }
+    }
+
     // ---------------------------------------------------------------- reads
 
-    fun refresh() = viewModelScope.launch {
-        val c = client ?: return@launch
+    fun refresh() = exchange { c ->
         _state.update { it.copy(busy = true) }
         val absent = mutableSetOf<String>()
 
@@ -212,6 +327,10 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(keyMappings = f.keyMappings()) }
         } ?: run { absent += "keyMappings" }
 
+        // A link that dropped mid-refresh answers nothing: that says nothing
+        // about the model, so the support map is left as it was.
+        if (!c.isOpen) return@exchange
+
         _state.update { it.copy(busy = false, unsupported = absent) }
         logLine(str(R.string.log_refreshed, absent.size))
     }
@@ -228,8 +347,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         payload: ByteArray,
         settleMs: Long = 400,
         apply: (Int) -> Unit,
-    ) = viewModelScope.launch {
-        val c = client ?: return@launch
+    ) = exchange { c ->
         _state.update { it.copy(busy = true) }
         c.set(setCmd, getCmd, payload)
         delay(settleMs)
@@ -242,8 +360,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(ancMode = v) }
         }
 
-    fun setAncLevel(code: Int) = viewModelScope.launch {
-        val c = client ?: return@launch
+    fun setAncLevel(code: Int) = exchange { c ->
         _state.update { it.copy(busy = true) }
         c.set(Commands.ANC_LEVEL_SET, Commands.ANC_LEVEL_GET, byteArrayOf(code.toByte()))
         delay(400)
@@ -258,8 +375,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = false) }
     }
 
-    fun setTransparencyLevel(code: Int) = viewModelScope.launch {
-        val c = client ?: return@launch
+    fun setTransparencyLevel(code: Int) = exchange { c ->
         _state.update { it.copy(busy = true) }
         c.set(
             Commands.TRANSPARENT_LEVEL_SET,
@@ -312,8 +428,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
      * comes on, for lack of bandwidth over two links. Both are therefore read
      * back, after a longer delay because the links get reconfigured.
      */
-    fun setMultipoint(on: Boolean) = viewModelScope.launch {
-        val c = client ?: return@launch
+    fun setMultipoint(on: Boolean) = exchange { c ->
         _state.update { it.copy(busy = true) }
         if (on) logLine(str(R.string.log_multipoint_enabling))
         c.setBool(Commands.MULTIPOINT_SET, Commands.MULTIPOINT_GET, on)
@@ -327,8 +442,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = false) }
     }
 
-    fun setLdac(on: Boolean) = viewModelScope.launch {
-        val c = client ?: return@launch
+    fun setLdac(on: Boolean) = exchange { c ->
         _state.update { it.copy(busy = true) }
         if (on) logLine(str(R.string.log_ldac_enabling))
         c.setBool(Commands.LDAC_SET, Commands.LDAC_GET, on)
@@ -342,8 +456,7 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = false) }
     }
 
-    fun applyEq(bands: List<EqBand>, masterGain: Double) = viewModelScope.launch {
-        val c = client ?: return@launch
+    fun applyEq(bands: List<EqBand>, masterGain: Double) = exchange { c ->
         _state.update { it.copy(busy = true) }
         c.applyEq(bands, masterGain, eqUsesV1(_state.value.firmware))
         logLine(str(R.string.log_eq_applied, bands.size))
@@ -351,7 +464,8 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        client?.close()
+        wantedAddress = null
+        endSession()
         super.onCleared()
     }
 }

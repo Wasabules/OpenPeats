@@ -109,7 +109,7 @@ fun App(vm: DeviceViewModel = viewModel()) {
         }
 
         if (!state.connected) {
-            DevicePicker(vm, state.connecting)
+            DevicePicker(vm, state)
         } else {
             ConnectedView(vm, state)
         }
@@ -133,12 +133,28 @@ fun App(vm: DeviceViewModel = viewModel()) {
 }
 
 @Composable
-private fun DevicePicker(vm: DeviceViewModel, connecting: Boolean) {
+private fun DevicePicker(vm: DeviceViewModel, s: DeviceState) {
     val devices = remember { vm.pairedDevices() }
+    val connecting = s.connecting
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.paired_earbuds), fontWeight = FontWeight.Bold)
+
+            // Picking a device by hand stays possible: it supersedes the
+            // automatic reconnection.
+            if (s.reconnecting) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.reconnecting), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { vm.disconnect() }) {
+                        Text(stringResource(R.string.action_stop))
+                    }
+                }
+            }
 
             if (devices.isEmpty()) {
                 Text(stringResource(R.string.no_paired_devices), fontSize = 13.sp)

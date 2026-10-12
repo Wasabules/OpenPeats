@@ -5,6 +5,8 @@
     <string name="permission_required">Autorisation Bluetooth requise.</string>
     <string name="paired_earbuds">Écouteurs appairés</string>
     <string name="no_paired_devices">Aucun appareil audio appairé. Appairez vos écouteurs dans les réglages Bluetooth, puis revenez ici.</string>
+    <string name="reconnecting">Les écouteurs redémarrent — reconnexion…</string>
+    <string name="action_stop">Arrêter</string>
     <string name="multipoint_hint">Si le multipoint est actif et qu\'un autre appareil tient le canal de contrôle, la connexion échouera : coupez-y le Bluetooth.</string>
     <string name="connecting">Connexion…</string>
     <string name="device_entry">%1$s  ·  %2$s</string>
@@ -81,6 +83,11 @@
     <string name="section_log">Journal</string>
     <string name="log_connected">Connecté à %1$s.</string>
     <string name="log_disconnected">Déconnecté.</string>
+    <string name="log_link_lost">Lien perdu.</string>
+    <string name="log_link_lost_reconnecting">Lien perdu — les écouteurs ont redémarré. Reconnexion en cours…</string>
+    <string name="log_reconnect_attempt">Reconnexion %1$d/%2$d : %3$s</string>
+    <string name="log_reconnected">Reconnecté.</string>
+    <string name="log_reconnect_gave_up">Reconnexion impossible après %1$d essais. Relancez-la à la main.</string>
     <string name="log_failed">Échec : %1$s</string>
     <string name="log_refreshed">Rafraîchi. %1$d fonction(s) absente(s) de ce modèle.</string>
     <string name="log_multipoint_enabling">Activation du multipoint — LDAC va être désactivé par le firmware.</string>
