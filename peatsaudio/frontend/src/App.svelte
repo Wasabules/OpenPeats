@@ -5,6 +5,8 @@
   import Segmented from "./lib/Segmented.svelte";
   import EQEditor from "./lib/EQEditor.svelte";
   import TouchPanel from "./lib/TouchPanel.svelte";
+  import StatusBar from "./lib/StatusBar.svelte";
+  import AdvancedPanel from "./lib/AdvancedPanel.svelte";
   import { LOCALES, locale, setLocale, t } from "./lib/i18n.js";
 
   import {
@@ -20,7 +22,12 @@
   } from "../wailsjs/go/main/App";
   import { EventsOn } from "../wailsjs/runtime/runtime";
 
-  let state = $state({
+  // The device state pushed by Go. Not named `state`: next to the $state rune,
+  // a variable of that name makes `$state` read as a store subscription.
+  // Typed from the Wails-generated model, minus the conversion helper the
+  // generator adds to every class: a plain object literal has no methods.
+  /** @type {Omit<import("../wailsjs/go/models").main.State, "convertValues">} */
+  let device = $state({
     connected: false, mac: "", channel: 0, firmware: "",
     batteryLeft: 0, batteryRight: 0, batteryCase: 0,
     ancMode: 0, ancLevel: 0, ancLevels: [],
@@ -33,17 +40,20 @@
     language: "en",
   });
 
-  let mac = $state("98:80:BB:40:D4:ED");
+  // No address is built in: Go remembers the last one that connected and
+  // hands it over with the state.
+  let mac = $state("");
   let tab = $state("audio");
   let busy = $state(false);
   let logs = $state([]);
   let frames = $state([]);
   /** Message from Go: { key, args }. Empty key means no error. */
-  let connError = $state(null);
-  let alert = $state(null);
+  let connError = $state(/** @type {import("../wailsjs/go/models").main.Message | null} */ (null));
+  let alert = $state(/** @type {{ labelKey: string, percent: number } | null} */ (null));
 
   let rawCmd = $state("0306");
   let rawPayload = $state("");
+  let rawEqVendor = $state(false);
 
   const TABS = [
     { id: "audio", key: "tab.audio" },
@@ -95,12 +105,12 @@
     }
   });
 
-  const sup = $derived(state.supported || {});
+  const sup = $derived(device.supported || {});
   const ancModeOptions = $derived(
     ANC_MODES.map((m) => ({ value: m.value, label: $t(m.key) }))
   );
   const ancLevelOptions = $derived(
-    (state.ancLevels || []).map((p) => ({
+    (device.ancLevels || []).map((p) => ({
       value: p.code,
       label: ANC_LEVEL_KEYS[p.code]
         ? $t(ANC_LEVEL_KEYS[p.code])
@@ -108,7 +118,7 @@
     }))
   );
   const transparencyOptions = $derived(
-    (state.transparencyLevels || []).map((p) => ({
+    (device.transparencyLevels || []).map((p) => ({
       value: p.code,
       label: TRANSPARENCY_KEYS[p.code]
         ? $t(TRANSPARENCY_KEYS[p.code])
@@ -116,21 +126,13 @@
     }))
   );
 
-  const ancLevelRelevant = $derived(state.ancMode === 1);
-  const transparencyRelevant = $derived(state.ancMode === 2);
-
-  // Battery readings, paired with their label key so the status bar and the
-  // low-battery banner name the same thing the same way.
-  const batteries = $derived([
-    { key: "battery.left", value: state.batteryLeft },
-    { key: "battery.right", value: state.batteryRight },
-    { key: "battery.case", value: state.batteryCase },
-  ]);
+  const ancLevelRelevant = $derived(device.ancMode === 1);
+  const transparencyRelevant = $derived(device.ancMode === 2);
 
   const stamp = () => new Date().toLocaleTimeString($locale);
 
   onMount(async () => {
-    EventsOn("state", (s) => { state = s; if (s.mac) mac = s.mac; });
+    EventsOn("state", (s) => { device = s; if (s.mac) mac = s.mac; });
     // Go sends { key, args } rather than text: the line is translated at
     // render time, so switching language re-renders the whole log.
     EventsOn("log", (message) => {
@@ -143,7 +145,7 @@
     });
 
     const s = await GetState();
-    state = s;
+    device = s;
     if (s.mac) mac = s.mac;
   });
 
@@ -160,21 +162,15 @@
     run(async () => { await ApplyEQ(bands, masterGain); });
   const onApplyKeys = (mappings) => run(async () => { await SetKeyMappings(mappings); });
 
-  const sendRaw = () => run(async () => {
-    const err = await SendRaw(rawCmd, rawPayload, false);
+  const sendRaw = ({ cmd, payload, eqVendor }) => run(async () => {
+    const err = await SendRaw(cmd, payload, eqVendor);
     if (err && err.key) logs = [...logs, { ts: stamp(), message: err }];
   });
-
-  function battClass(v) {
-    if (v <= state.batteryThresh) return "bad";
-    if (v <= state.batteryThresh + 15) return "warn";
-    return "good";
-  }
 </script>
 
 <header class="topbar">
   <div class="brand">
-    <span class="dot" class:on={state.connected}></span>
+    <span class="dot" class:on={device.connected}></span>
     <strong>PeatsAudio</strong>
     <span class="faint">{$t("app.tagline")}</span>
   </div>
@@ -187,9 +183,9 @@
       {/each}
     </select>
 
-    <input type="text" bind:value={mac} spellcheck="false"
-           disabled={busy || state.connected} aria-label={$t("field.macAddress")} />
-    {#if state.connected}
+    <input type="text" bind:value={mac} spellcheck="false" placeholder="AA:BB:CC:DD:EE:FF"
+           disabled={busy || device.connected} aria-label={$t("field.macAddress")} />
+    {#if device.connected}
       <button onclick={doRefresh} disabled={busy}>{$t("action.refresh")}</button>
       <button onclick={doDisconnect} disabled={busy}>{$t("action.disconnect")}</button>
     {:else}
@@ -209,28 +205,12 @@
   </div>
 {/if}
 
-{#if connError && connError.key && !state.connected}
+{#if connError && connError.key && !device.connected}
   <div class="err">{$t(connError)}</div>
 {/if}
 
-{#if state.connected}
-  <div class="statusbar">
-    <div class="batts">
-      {#each batteries as b}
-        <div class="batt">
-          <span class="faint">{$t(b.key)}</span>
-          <div class="bar">
-            <div class="fill {battClass(b.value)}" style="width:{b.value}%"></div>
-          </div>
-          <span class="pct">{b.value}%</span>
-        </div>
-      {/each}
-    </div>
-    <div class="meta faint mono">
-      {state.firmware || $t("status.firmwareUnknown")} ·
-      {$t("status.channel", { channel: state.channel })}
-    </div>
-  </div>
+{#if device.connected}
+  <StatusBar state={device} />
 {/if}
 
 <nav class="tabs">
@@ -242,7 +222,7 @@
 </nav>
 
 <main class="scroll">
-  {#if !state.connected}
+  {#if !device.connected}
     <div class="empty-state">
       <h2>{$t("empty.title")}</h2>
       <p class="dim">{$t("empty.body")}</p>
@@ -251,14 +231,14 @@
   {:else if tab === "audio"}
     <div class="grid">
       <Card title={$t("card.anc.title")} hint={$t("card.anc.hint")}>
-        <Segmented options={ancModeOptions} value={state.ancMode} disabled={busy}
+        <Segmented options={ancModeOptions} value={device.ancMode} disabled={busy}
                    onchange={(v) => run(() => SetANCMode(v))} />
       </Card>
 
       <Card title={$t("card.ancLevel.title")}
             unsupported={sup.ancLevel === false}
             hint={ancLevelRelevant ? "" : $t("card.ancLevel.hint")}>
-        <Segmented options={ancLevelOptions} value={state.ancLevel}
+        <Segmented options={ancLevelOptions} value={device.ancLevel}
                    disabled={busy || !ancLevelRelevant}
                    onchange={(v) => run(() => SetANCLevel(v))} />
       </Card>
@@ -266,21 +246,21 @@
       <Card title={$t("card.transparency.title")}
             unsupported={sup.transparencyLevel === false}
             hint={transparencyRelevant ? "" : $t("card.transparency.hint")}>
-        <Segmented options={transparencyOptions} value={state.transparencyLevel}
+        <Segmented options={transparencyOptions} value={device.transparencyLevel}
                    disabled={busy || !transparencyRelevant}
                    onchange={(v) => run(() => SetTransparencyLevel(v))} />
       </Card>
 
       <Card title={$t("card.codec.title")} hint={$t("card.codec.hint")}>
-        <Toggle label={$t("toggle.ldac.label")} checked={state.ldac}
+        <Toggle label={$t("toggle.ldac.label")} checked={device.ldac}
                 disabled={busy || sup.ldac === false}
                 note={$t("toggle.ldac.note")}
                 onchange={(v) => run(() => SetLDAC(v))} />
-        <Toggle label={$t("toggle.multipoint.label")} checked={state.multipoint}
+        <Toggle label={$t("toggle.multipoint.label")} checked={device.multipoint}
                 disabled={busy || sup.multipoint === false}
                 note={$t("toggle.multipoint.note")}
                 onchange={(v) => run(() => SetMultipoint(v))} />
-        <Toggle label={$t("toggle.leAudio.label")} checked={state.leAudio}
+        <Toggle label={$t("toggle.leAudio.label")} checked={device.leAudio}
                 disabled={busy || sup.leAudio === false}
                 onchange={(v) => run(() => SetLEAudio(v))} />
       </Card>
@@ -289,12 +269,12 @@
   {:else if tab === "general"}
     <div class="grid">
       <Card title={$t("card.modes.title")}>
-        <Toggle label={$t("toggle.gameMode.label")} checked={state.gameMode}
+        <Toggle label={$t("toggle.gameMode.label")} checked={device.gameMode}
                 disabled={busy || sup.gameMode === false}
                 note={$t("toggle.gameMode.note")}
                 onchange={(v) => run(() => SetGameMode(v))} />
         <Toggle label={$t("toggle.touchDisabled.label")}
-                checked={state.touchDisabled}
+                checked={device.touchDisabled}
                 disabled={busy || sup.touchDisabled === false}
                 note={$t("toggle.touchDisabled.note")}
                 onchange={(v) => run(() => SetTouchDisabled(v))} />
@@ -302,14 +282,14 @@
 
       <Card title={$t("card.batteryAlert.title")} hint={$t("card.batteryAlert.hint")}>
         <Toggle label={$t("toggle.systemNotifications.label")}
-                checked={state.batteryAlert} disabled={busy}
+                checked={device.batteryAlert} disabled={busy}
                 onchange={(v) => run(() => SetBatteryAlert(v))} />
         <div class="field" style="margin-top:10px">
           <span class="faint">
-            {$t("field.alertThreshold", { value: state.batteryThresh })}
+            {$t("field.alertThreshold", { value: device.batteryThresh })}
           </span>
           <input type="range" min="5" max="50" step="5"
-                 value={state.batteryThresh} disabled={busy}
+                 value={device.batteryThresh} disabled={busy}
                  onchange={(e) => run(() => SetBatteryThreshold(Number(e.currentTarget.value)))} />
         </div>
         <div style="margin-top:12px; display:flex; justify-content:flex-end">
@@ -322,7 +302,7 @@
       <Card title={$t("card.voicePrompts.title")} unsupported={sup.voicePack === false}>
         <div class="field">
           <span class="faint">{$t("field.language")}</span>
-          <select value={state.voicePack} disabled={busy}
+          <select value={device.voicePack} disabled={busy}
                   onchange={(e) => run(() => SetVoicePack(Number(e.currentTarget.value)))}>
             {#each VOICE_PACKS as v}
               <option value={v.value}>{v.label}</option>
@@ -331,18 +311,20 @@
         </div>
         <div class="field" style="margin-top:12px">
           <span class="faint">
-            {$t("field.promptVolume", { value: state.promptVolume })}
+            {$t("field.promptVolume", { value: device.promptVolume })}
           </span>
           <input type="range" min="0" max="100" step="1"
-                 value={state.promptVolume} disabled={busy || sup.promptVolume === false}
+                 value={device.promptVolume} disabled={busy || sup.promptVolume === false}
                  onchange={(e) => run(() => SetPromptVolume(Number(e.currentTarget.value)))} />
         </div>
       </Card>
 
       <Card title={$t("card.missing.title")} hint={$t("card.missing.hint")}>
         <div class="chips">
+          <!-- Go reports support per feature key (features.go); each one has
+               a feature.<key> entry in the catalogue. -->
           {#each Object.entries(sup).filter(([, v]) => v === false) as [k]}
-            <span class="chip">{k}</span>
+            <span class="chip">{$t(`feature.${k}`)}</span>
           {:else}
             <span class="faint">{$t("card.missing.none")}</span>
           {/each}
@@ -355,7 +337,7 @@
       <Card title={$t("card.touch.title")} unverified
             unsupported={sup.keyMappings === false}
             hint={$t("card.touch.hint")}>
-        <TouchPanel mappings={state.keyMappings} {busy} onapply={onApplyKeys} />
+        <TouchPanel mappings={device.keyMappings} {busy} onapply={onApplyKeys} />
       </Card>
     </div>
 
@@ -367,48 +349,8 @@
     </div>
 
   {:else if tab === "advanced"}
-    <div class="single">
-      <Card title={$t("card.raw.title")} hint={$t("card.raw.hint")}>
-        <div class="raw">
-          <label>
-            <span class="faint">{$t("field.rawCommand")}</span>
-            <input type="text" bind:value={rawCmd} placeholder="0306" spellcheck="false" />
-          </label>
-          <label>
-            <span class="faint">{$t("field.rawPayload")}</span>
-            <input type="text" bind:value={rawPayload} placeholder="01" spellcheck="false" />
-          </label>
-          <button onclick={sendRaw} disabled={busy}>{$t("action.send")}</button>
-        </div>
-      </Card>
-
-      <Card title={$t("card.frames.title")} hint={$t("card.frames.hint")}>
-        <div class="logs scroll">
-          {#each frames.slice().reverse() as f}
-            <div class="frameline">
-              <span class="faint mono">{f.ts}</span>
-              <span class="mono cmdcell">{f.cmd}</span>
-              <span class="mono dim">{f.payload || "—"}</span>
-            </div>
-          {:else}
-            <span class="faint">{$t("card.frames.empty")}</span>
-          {/each}
-        </div>
-      </Card>
-
-      <Card title={$t("card.log.title")}>
-        <div class="logs scroll">
-          {#each logs.slice().reverse() as l}
-            <div class="logline">
-              <span class="faint mono">{l.ts}</span>
-              <span>{$t(l.message)}</span>
-            </div>
-          {:else}
-            <span class="faint">{$t("card.log.empty")}</span>
-          {/each}
-        </div>
-      </Card>
-    </div>
+    <AdvancedPanel {busy} {frames} {logs} onsend={sendRaw}
+                   bind:rawCmd bind:rawPayload bind:eqVendor={rawEqVendor} />
   {/if}
 </main>
 
@@ -451,24 +393,6 @@
     font-size: 0.86rem; line-height: 1.5;
   }
 
-  .statusbar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 20px; padding: 11px 20px;
-    border-bottom: 1px solid var(--border);
-  }
-  .batts { display: flex; gap: 22px; flex-wrap: wrap; }
-  .batt { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
-  .bar {
-    width: 74px; height: 7px; border-radius: 4px;
-    background: var(--bg-input); overflow: hidden;
-  }
-  .fill { height: 100%; border-radius: 4px; transition: width 300ms; }
-  .fill.good { background: var(--good); }
-  .fill.warn { background: var(--warn); }
-  .fill.bad { background: var(--bad); }
-  .pct { min-width: 34px; }
-  .meta { font-size: 0.76rem; }
-
   .tabs { display: flex; gap: 3px; padding: 10px 20px 0; }
   .tabs button {
     border: none; background: none; border-radius: 0;
@@ -503,14 +427,4 @@
     color: var(--text-faint);
   }
 
-  .raw { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
-  .raw label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
-
-  .logs { height: 230px; font-size: 0.81rem; }
-  .logline { display: flex; gap: 10px; padding: 2px 0; line-height: 1.45; }
-  .frameline {
-    display: grid; grid-template-columns: 92px 58px 1fr;
-    gap: 10px; padding: 2px 0;
-  }
-  .cmdcell { color: var(--accent); font-weight: 700; }
 </style>

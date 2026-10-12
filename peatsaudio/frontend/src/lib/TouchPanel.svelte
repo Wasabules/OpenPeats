@@ -35,16 +35,13 @@
   // Working table: the mapping read from the earbuds, filled in with the
   // gestures the reply left out.
   //
-  // An effect rather than $derived, because the table is written to as well as
-  // read: edits made here sit on top of it until the earbuds report a new
-  // mapping, which resets the table to what the hardware actually holds.
-  let draft = $state([]);
-  $effect(() => {
-    draft = GESTURES.map((g) => {
-      const found = mappings.find((m) => m.gesture === g.code);
-      return { gesture: g.code, action: found ? found.action : 0 };
-    });
-  });
+  // A writable $derived: edits made here are assigned over it and sit on top
+  // until the earbuds report a new mapping, which recomputes the table from
+  // what the hardware actually holds.
+  let draft = $derived(GESTURES.map((g) => {
+    const found = mappings.find((m) => m.gesture === g.code);
+    return { gesture: g.code, action: found ? found.action : 0 };
+  }));
 
   function setAction(gesture, action) {
     draft = draft.map((d) =>

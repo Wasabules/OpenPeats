@@ -1,5 +1,5 @@
 <script>
-  import { t } from "./i18n.js";
+  import { locale, t } from "./i18n.js";
 
   let {
     busy = false,
@@ -11,6 +11,8 @@
   const F_MIN = 20;
   const F_MAX = 20000;
   const DB_RANGE = 12;
+  // Same limits as the encoder in Go (peats.EQGainMin and friends), which
+  // clamps again before anything reaches the earbuds.
   const GAIN_MIN = -12;
   const GAIN_MAX = 12;
   const Q_MIN = 0.3;
@@ -170,9 +172,25 @@
 
   function onPointerUp() { dragIndex = -1; }
 
+  // A number field's min and max only bound its spinner: a typed 9, or an
+  // emptied field, would go out as is. Clamp here so the field shows what
+  // will actually be sent.
+  function setQ(i, input) {
+    const v = input.valueAsNumber;
+    const q = Number.isFinite(v) ? Math.max(Q_MIN, Math.min(Q_MAX, v)) : bands[i].q;
+    bands[i] = { ...bands[i], q };
+    input.value = String(q);
+  }
+
+  // Numbers follow the interface language: 1.5 in English, 1,5 in French.
+  const fmtGain = $derived(new Intl.NumberFormat($locale, {
+    minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero",
+  }));
+  const fmtKilo = $derived(new Intl.NumberFormat($locale, { maximumFractionDigits: 1 }));
+
   const GRID_DB = [-12, -6, 0, 6, 12];
   const GRID_F = [50, 100, 500, 1000, 5000, 10000];
-  const fmtF = (f) => (f >= 1000 ? `${(f / 1000).toFixed(f % 1000 ? 1 : 0)}k` : `${f}`);
+  const fmtF = (f) => (f >= 1000 ? `${fmtKilo.format(f / 1000)}k` : `${f}`);
 </script>
 
 <div class="eq">
@@ -235,17 +253,18 @@
         <div class="q">
           <span class="faint">Q</span>
           <input type="number" min={Q_MIN} max={Q_MAX} step="0.1"
-                 bind:value={b.q} disabled={busy}
+                 value={b.q} disabled={busy}
+                 onchange={(e) => setQ(i, e.currentTarget)}
                  title={$t("eq.qTitle")} />
         </div>
 
-        <input class="slider" type="range" orient="vertical"
+        <input class="slider" type="range"
                min={GAIN_MIN} max={GAIN_MAX} step="0.5"
                bind:value={b.gain} disabled={busy}
                aria-label={$t("eq.gainAt", { freq: fmtF(b.freq) })} />
 
         <div class="val" class:zero={b.gain === 0}>
-          {b.gain > 0 ? "+" : ""}{b.gain.toFixed(1)}
+          {fmtGain.format(b.gain)}
         </div>
         <div class="freq">{fmtF(b.freq)}</div>
       </div>
@@ -256,7 +275,7 @@
     <div class="master">
       <label for="mg">
         {$t("eq.masterGain")}
-        <strong>{masterGain > 0 ? "+" : ""}{masterGain.toFixed(1)} dB</strong>
+        <strong>{fmtGain.format(masterGain)} dB</strong>
       </label>
       <input id="mg" type="range" min={GAIN_MIN} max={GAIN_MAX} step="0.5"
              bind:value={masterGain} disabled={busy} />

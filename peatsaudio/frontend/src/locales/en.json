@@ -60,7 +60,7 @@
   "card.transparency.title": "Transparency level",
   "card.voicePrompts.title": "Voice prompts",
 
-  "empty.body": "Take the earbuds out of their case, then connect. If multipoint is on and your phone holds the control channel, turn Bluetooth off there first.",
+  "empty.body": "Enter the Bluetooth address of your earbuds — it is listed in your system's Bluetooth settings — take them out of their case, then connect. If multipoint is on and your phone holds the control channel, turn Bluetooth off there first.",
   "empty.title": "Earbuds not connected",
 
   "eq.bands": "{count} bands",
@@ -88,11 +88,28 @@
   "error.unreachable": "Earbuds unreachable — off, in their case, or out of range. Paired is not enough: the system must have established the link.",
   "error.unsupported": "RFCOMM transport not implemented on this platform.",
 
+  "feature.ancLevel": "Noise cancelling sub-mode",
+  "feature.ancMode": "Noise cancelling",
+  "feature.batteryCase": "Case battery",
+  "feature.batteryLeft": "Left battery",
+  "feature.batteryRight": "Right battery",
+  "feature.firmware": "Firmware version",
+  "feature.gameMode": "Game mode",
+  "feature.keyMappings": "Touch controls",
+  "feature.ldac": "LDAC",
+  "feature.leAudio": "LE Audio",
+  "feature.multipoint": "Multipoint",
+  "feature.promptVolume": "Voice prompt volume",
+  "feature.touchDisabled": "Touch lock",
+  "feature.transparencyLevel": "Transparency level",
+  "feature.voicePack": "Voice prompt language",
+
   "field.alertThreshold": "Alert threshold — {value}%",
   "field.language": "Language",
   "field.macAddress": "MAC address",
   "field.promptVolume": "Prompt volume — {value}",
   "field.rawCommand": "Command (2 hex bytes)",
+  "field.rawEqVendor": "Send under the equaliser's vendor id (00 1D)",
   "field.rawPayload": "Payload (hex, optional)",
   "field.uiLanguage": "Interface language",
 

@@ -10,11 +10,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check:locales": "node scripts/check-locales.mjs"
+    "check:locales": "node scripts/check-locales.mjs",
+    "check": "svelte-check --tsconfig ./jsconfig.json --threshold warning"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
     "vite": "^8.2.2"
   }
 }

@@ -60,7 +60,7 @@
   "card.transparency.title": "Niveau de transparence",
   "card.voicePrompts.title": "Invites vocales",
 
-  "empty.body": "Sortez les écouteurs de l'étui, puis connectez-vous. Si le multipoint est actif et que votre téléphone tient le canal de contrôle, coupez-y le Bluetooth au préalable.",
+  "empty.body": "Saisissez l'adresse Bluetooth de vos écouteurs — elle figure dans les paramètres Bluetooth du système —, sortez-les de l'étui, puis connectez-vous. Si le multipoint est actif et que votre téléphone tient le canal de contrôle, coupez-y le Bluetooth au préalable.",
   "empty.title": "Écouteurs non connectés",
 
   "eq.bands": "{count} bandes",
@@ -88,11 +88,28 @@
   "error.unreachable": "Écouteurs injoignables — éteints, dans l'étui, ou hors de portée. Appairés ne suffit pas : le système doit avoir établi le lien.",
   "error.unsupported": "Transport RFCOMM non implémenté sur cette plateforme.",
 
+  "feature.ancLevel": "Sous-mode de réduction",
+  "feature.ancMode": "Réduction de bruit",
+  "feature.batteryCase": "Batterie de l'étui",
+  "feature.batteryLeft": "Batterie gauche",
+  "feature.batteryRight": "Batterie droite",
+  "feature.firmware": "Version du firmware",
+  "feature.gameMode": "Mode jeu",
+  "feature.keyMappings": "Commandes tactiles",
+  "feature.ldac": "LDAC",
+  "feature.leAudio": "LE Audio",
+  "feature.multipoint": "Multipoint",
+  "feature.promptVolume": "Volume des invites vocales",
+  "feature.touchDisabled": "Verrouillage tactile",
+  "feature.transparencyLevel": "Niveau de transparence",
+  "feature.voicePack": "Langue des invites vocales",
+
   "field.alertThreshold": "Seuil d'alerte — {value} %",
   "field.language": "Langue",
   "field.macAddress": "Adresse MAC",
   "field.promptVolume": "Volume des invites — {value}",
   "field.rawCommand": "Commande (2 octets hex)",
+  "field.rawEqVendor": "Envoyer avec l'identifiant constructeur de l'égaliseur (00 1D)",
   "field.rawPayload": "Payload (hex, optionnel)",
   "field.uiLanguage": "Langue de l'interface",
 

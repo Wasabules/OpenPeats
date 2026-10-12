@@ -111,15 +111,51 @@ for (const locale of locales) {
   }
 }
 
-// Unused keys. Go emits some of them (log.*, error.*, battery.*, notify.*)
-// and those never appear in a .svelte file, so they are exempt.
+// Keys Go emits. Nothing under src/ names them, so without this a typo in a
+// msg("…") call would ship as a raw identifier on screen. Go builds Messages
+// with msg(), logs with a.log() and nests keys with ref(): those three call
+// sites are the whole contract (see message.go).
+const goDir = resolve(here, "..", "..");
+const goSources = Object.fromEntries(
+  readdirSync(goDir)
+    .filter((f) => f.endsWith(".go") && !f.endsWith("_test.go"))
+    .map((f) => [f, readFileSync(join(goDir, f), "utf8")])
+);
+const GO_KEY = /\b(?:msg|ref|a\.log)\("([\w.]+)"/g;
+const goKeys = new Set();
+for (const [file, text] of Object.entries(goSources)) {
+  for (const [, key] of text.matchAll(GO_KEY)) {
+    goKeys.add(key);
+    if (!(key in source)) fail(`${file}: emits "${key}", absent from ${SOURCE}.json`);
+  }
+}
+
+// Feature keys: Go reports support per entry of the table in features.go, and
+// the frontend renders each as feature.<key>.
+const FEATURE_KEY = /\bkey:\s*"(\w+)"/g;
+const featureKeys = [...(goSources["features.go"] ?? "").matchAll(FEATURE_KEY)].map((m) => m[1]);
+if (featureKeys.length === 0) fail("features.go: no feature table found — has it moved?");
+for (const key of featureKeys) {
+  if (!(`feature.${key}` in source)) {
+    fail(`features.go: feature "${key}" has no "feature.${key}" entry in ${SOURCE}.json`);
+  }
+}
+
+// Unused keys. Go-emitted ones count as used; so do battery.* and notify.*,
+// which Go passes around as variables rather than literals.
 const GO_EMITTED = /^(log\.|error\.|battery\.|notify\.)/;
 const haystack = sourceFiles(srcDir)
   .map((f) => readFileSync(f, "utf8"))
   .join("\n");
 
 for (const key of sourceKeys) {
-  if (GO_EMITTED.test(key)) continue;
+  if (goKeys.has(key) || GO_EMITTED.test(key)) continue;
+  if (key.startsWith("feature.")) {
+    if (!featureKeys.includes(key.slice("feature.".length))) {
+      fail(`${SOURCE}.json: "${key}" matches no entry of the feature table in features.go`);
+    }
+    continue;
+  }
   if (!haystack.includes(`"${key}"`)) {
     fail(`${SOURCE}.json: key "${key}" is not referenced anywhere in src/`);
   }
