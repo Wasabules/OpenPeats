@@ -1,0 +1,47 @@
+name: Set up the desktop toolchain
+description: >
+  Go, Node with its npm cache, the GTK/WebKit headers on Linux, and the Wails
+  CLI at the version go.mod pins. Shared by CI and the release workflow, so
+  what CI checks is what the release builds with.
+
+inputs:
+  go-version:
+    description: Go version to install
+    required: true
+  node-version:
+    description: Node version to install
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache-dependency-path: peatsaudio/go.sum
+
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: peatsaudio/frontend/package-lock.json
+
+    # Ubuntu 24.04 dropped webkit2gtk-4.0, hence the 4.1 packages and the
+    # webkit2_41 build tag. The Wails runtime pulls them in through cgo, so
+    # even binding generation fails without the headers.
+    - name: Install GTK and WebKit headers
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+    # The CLI follows go.mod: the bindings and the build always come from the
+    # Wails release the code was written against.
+    - name: Install Wails
+      shell: bash
+      working-directory: peatsaudio
+      run: |
+        wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+        go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

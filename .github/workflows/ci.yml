@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The release workflow runs this whole file before building anything, so a
+  # tag on a commit that fails CI never publishes.
+  workflow_call:
 
 # A new push supersedes the run in flight for the same ref. Only main is
 # exempt: its history is what releases are cut from, so every commit there
@@ -16,6 +19,8 @@ concurrency:
 permissions:
   contents: read
 
+# Actions are pinned to a full commit SHA, with the version in a comment:
+# a tag can be moved, a SHA cannot. Dependabot keeps both up to date.
 env:
   GO_VERSION: "1.25"
   NODE_VERSION: "22"
@@ -36,9 +41,9 @@ jobs:
       run:
         working-directory: peatsaudio
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: peatsaudio/go.sum
@@ -60,8 +65,8 @@ jobs:
 
       # -race only on Linux: on Windows the detector needs an external C
       # toolchain that the runner image happens to provide but does not
-      # guarantee, and the concurrency being tested (readLoop, drain) is
-      # platform independent anyway.
+      # guarantee, and the concurrency being tested (readLoop, the callbacks,
+      # drain) is platform independent anyway.
       - name: Test (with race detector)
         if: runner.os == 'Linux'
         run: go test -race ./internal/...
@@ -80,11 +85,13 @@ jobs:
       run:
         working-directory: probe
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # No go.sum: the probe has no dependency, so there is nothing to cache —
+      # and setup-go fails its cache step looking for one.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: probe/go.sum
+          cache: false
 
       # A separate module carrying //go:build linux: raw AF_BLUETOOTH sockets
       # exist nowhere else.
@@ -104,14 +111,14 @@ jobs:
     name: Translation catalogues
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: peatsaudio/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -124,6 +131,8 @@ jobs:
         working-directory: peatsaudio
         run: go test ./internal/i18n/ -v
 
+      # Also checks that every key the Go side emits exists in the UI
+      # catalogue, since nothing in the frontend source names those.
       - name: UI catalogues
         working-directory: peatsaudio/frontend
         run: |
@@ -137,47 +146,38 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-desktop
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: peatsaudio/go.sum
-
-      - uses: actions/setup-node@v4
-        with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: peatsaudio/frontend/package-lock.json
-
-      # Binding generation loads the Go packages, and the Wails runtime pulls
-      # in cgo against GTK/WebKit. Without the headers the step fails before
-      # it writes a single file.
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       # The Svelte app imports ../wailsjs/go/main/App, which is generated from
       # the Go bindings and git-ignored. Without this step the build fails on
       # a missing module — and regenerating it here is also what catches a
-      # frontend call to a method app.go no longer exposes.
+      # frontend call to a method the Go side no longer exposes.
       - name: Generate Wails bindings
         working-directory: peatsaudio
-        run: |
-          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
-          go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
-          "$(go env GOPATH)"/bin/wails generate module
+        run: wails generate module
+
+      - name: Install
+        working-directory: peatsaudio/frontend
+        run: npm ci
+
+      # svelte-check type-checks the components against the generated
+      # bindings and models, and fails on any compiler warning.
+      - name: Check
+        working-directory: peatsaudio/frontend
+        run: npm run check
 
       - name: Build
         working-directory: peatsaudio/frontend
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
       # Now that frontend/dist exists, the embed directive resolves and the
-      # root package can finally be vetted — the only place app.go itself gets
-      # checked.
+      # root package can finally be vetted — the only place the App itself
+      # gets checked.
       - name: Vet the root package
         working-directory: peatsaudio
         run: go vet -tags webkit2_41 .
@@ -189,27 +189,40 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
       - run: chmod +x gradlew
+
+      # The protocol tests read testvectors/protocol.json, the same file the
+      # Go tests read: a vector both implementations must agree on.
+      - name: Unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
 
       - name: Assemble debug
         run: ./gradlew --no-daemon :app:assembleDebug
 
+      # The release build type only otherwise runs at tag time, where a broken
+      # signing or packaging setup would surface too late. With no keystore
+      # here it falls back to the debug key, exactly as a fork's release does.
+      - name: Assemble release
+        run: ./gradlew --no-daemon :app:assembleRelease
+
       - name: Lint
         run: ./gradlew --no-daemon :app:lintDebug
 
-      - name: Upload lint report
+      - name: Upload test and lint reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: android-lint-report
-          path: android/app/build/reports/lint-results-debug.html
+          name: android-reports
+          path: |
+            android/app/build/reports/lint-results-debug.html
+            android/app/build/reports/tests/
           if-no-files-found: ignore

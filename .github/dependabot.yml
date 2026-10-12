@@ -1,0 +1,43 @@
+# Monthly and grouped: one pull request per ecosystem rather than one per
+# package, so updates arrive as a batch CI can vouch for at once.
+version: 2
+updates:
+  # Workflow actions are pinned to commit SHAs with the version in a comment;
+  # Dependabot updates both together. The composite action is listed
+  # explicitly: only .github/workflows is scanned by default.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/setup-desktop
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directories:
+      - /peatsaudio
+    schedule:
+      interval: monthly
+    groups:
+      go:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories:
+      - /peatsaudio/frontend
+    schedule:
+      interval: monthly
+    groups:
+      frontend:
+        patterns: ["*"]
+
+  - package-ecosystem: gradle
+    directories:
+      - /android
+    schedule:
+      interval: monthly
+    groups:
+      android:
+        patterns: ["*"]

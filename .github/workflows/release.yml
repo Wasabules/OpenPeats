@@ -9,6 +9,10 @@ on:
         description: "Version to build, without the leading v (e.g. 1.2.3)"
         required: true
         type: string
+      dry_run:
+        description: "Build every artefact but publish nothing (no tag, no release)"
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,7 +26,18 @@ env:
   NODE_VERSION: "22"
   JAVA_VERSION: "17"
 
+# Actions are pinned to a full commit SHA, with the version in a comment, as
+# in ci.yml. This workflow holds contents: write when it publishes: a moved
+# tag on a third-party action would run with that permission.
+
 jobs:
+  # The whole of CI, run against the commit being released. Every build job
+  # waits for it: a tag pushed on a red commit stops here instead of
+  # publishing.
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
   # One job resolves the version so the three build jobs cannot disagree about
   # what they are producing.
   meta:
@@ -33,12 +48,17 @@ jobs:
       android_code: ${{ steps.v.outputs.android_code }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
+      # The input reaches the script through the environment, never pasted
+      # into it: an expression expanded inside `run` is shell code, and this
+      # one is typed by hand.
       - id: v
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ inputs.version }}"
+            version="$INPUT_VERSION"
           else
             version="${GITHUB_REF_NAME#v}"
           fi
@@ -73,38 +93,20 @@ jobs:
 
   linux:
     name: Linux
-    needs: meta
+    needs: [meta, ci]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      # Go, Node, the WebKit 4.1 headers and the Wails CLI — the same setup
+      # CI checks with. The binary then needs libwebkit2gtk-4.1-0 at runtime,
+      # which the .deb declares.
+      - uses: ./.github/actions/setup-desktop
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: peatsaudio/go.sum
-
-      - uses: actions/setup-node@v4
-        with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: peatsaudio/frontend/package-lock.json
-
-      # Ubuntu 24.04 dropped webkit2gtk-4.0, hence the 4.1 packages and the
-      # webkit2_41 build tag below. The resulting binary needs
-      # libwebkit2gtk-4.1-0 at runtime, which the .deb declares.
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
-
-      - name: Install Wails
-        working-directory: peatsaudio
-        run: |
-          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
-          go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Stamp the version
         working-directory: peatsaudio
@@ -159,7 +161,7 @@ jobs:
           cp "$bin/peatsctl" "$out/peatsctl-$VERSION-linux-amd64"
           ls -lh "$out"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux
           path: dist/*
@@ -167,23 +169,17 @@ jobs:
 
   windows:
     name: Windows
-    needs: meta
+    needs: [meta, ci]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-desktop
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: peatsaudio/go.sum
-
-      - uses: actions/setup-node@v4
-        with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: peatsaudio/frontend/package-lock.json
 
       # The runner image ships NSIS, but that is an image detail rather than a
       # guarantee — installing it when absent keeps the workflow reproducible
@@ -195,14 +191,6 @@ jobs:
             choco install nsis -y --no-progress
             echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
           }
-
-      - name: Install Wails
-        shell: bash
-        working-directory: peatsaudio
-        run: |
-          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
-          go install github.com/wailsapp/wails/v2/cmd/wails@"$wails_version"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Stamp the version
         shell: bash
@@ -252,7 +240,7 @@ jobs:
           cp "$bin/peatsctl.exe" "$out/peatsctl-$VERSION-windows-amd64.exe"
           ls -lh "$out"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows
           path: dist/*
@@ -260,20 +248,20 @@ jobs:
 
   android:
     name: Android
-    needs: meta
+    needs: [meta, ci]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       VERSION_CODE: ${{ needs.meta.outputs.android_code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
       - run: chmod +x android/gradlew
 
@@ -336,7 +324,7 @@ jobs:
       # The repository .gitignore excludes *.apk to keep the manufacturer's APK
       # out of git. This one is our own build, uploaded straight from the
       # runner, so it never passes through git at all.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: android
           path: dist/*
@@ -345,15 +333,18 @@ jobs:
   publish:
     name: Publish release
     needs: [meta, linux, windows, android]
+    # A dry run stops once every artefact is built: the build jobs are the
+    # part worth rehearsing, and they only otherwise run at tag time.
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: staging
 
@@ -416,10 +407,14 @@ jobs:
           echo "--- release notes ---"
           cat notes.md
 
+      # target_commitish matters for a manual run, where the tag does not
+      # exist yet: without it the action creates the tag on the default
+      # branch as it stands at publish time, not on the commit that was built.
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', env.VERSION) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           name: PeatsAudio ${{ env.VERSION }}
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           generate_release_notes: true
