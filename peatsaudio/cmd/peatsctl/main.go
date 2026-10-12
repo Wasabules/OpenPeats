@@ -45,7 +45,7 @@ func main() {
 	}
 
 	fmt.Println(i18n.T("cli.connecting", "addr", *addr))
-	c, err := peats.Connect(*addr, uint8(*channel))
+	c, err := peats.Connect(*addr, uint8(*channel), peats.Callbacks{})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("cli.connectFailed"), explain(err))
 		os.Exit(1)

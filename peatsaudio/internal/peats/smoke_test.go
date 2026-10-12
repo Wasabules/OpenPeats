@@ -88,7 +88,7 @@ func TestLiveReadState(t *testing.T) {
 		t.Skip("PEATS_MAC unset — hardware test skipped")
 	}
 
-	c, err := Connect(mac, 0)
+	c, err := Connect(mac, 0, Callbacks{})
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}

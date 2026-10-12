@@ -8,16 +8,35 @@ import (
 	"time"
 )
 
-// Timings measured against a SOUNDPEATS H3.
-const (
+// Timings measured against a SOUNDPEATS H3. Variables rather than constants
+// only so the tests can shorten them; nothing else assigns them.
+var (
 	// A command sent too soon after the RFCOMM link comes up gets no reply.
 	// ~600 ms is enough.
 	settleDelay = 700 * time.Millisecond
 
 	defaultTimeout = 1500 * time.Millisecond
-	readRetries    = 3
 	readTimeout    = 300 * time.Millisecond
 )
+
+const readRetries = 3
+
+// Callbacks receive what the read loop sees. They are handed to Connect rather
+// than assigned on the returned client: the loop starts before Connect returns,
+// and a field written after that point is a data race — and a link that drops
+// during the settle delay would find no handler at all.
+type Callbacks struct {
+	// OnFrame receives every frame, including the spontaneous notifications
+	// the earbuds emit. Called from the read loop: it must not block.
+	OnFrame func(Frame)
+
+	// OnDisconnect fires when the link drops without being asked to —
+	// typically because the earbuds rebooted, which LDAC, multipoint and
+	// LE Audio all trigger. Not called on a deliberate Close(). It receives
+	// the client that dropped, so a caller juggling a reconnection can tell
+	// a stale client from the current one.
+	OnDisconnect func(*Client)
+}
 
 // Client is a control connection to a pair of earbuds.
 //
@@ -39,18 +58,11 @@ type Client struct {
 	frames  chan Frame
 	stopped chan struct{}
 
-	// OnFrame receives every frame, including the spontaneous notifications
-	// the earbuds emit.
-	OnFrame func(Frame)
-
-	// OnDisconnect fires when the link drops without being asked to —
-	// typically because the earbuds rebooted, which LDAC, multipoint and
-	// LE Audio all trigger. Not called on a deliberate Close().
-	OnDisconnect func()
+	cb Callbacks
 }
 
 // Connect opens a control connection. channel = 0 triggers discovery.
-func Connect(mac string, channel uint8) (*Client, error) {
+func Connect(mac string, channel uint8, cb Callbacks) (*Client, error) {
 	addr, err := ParseMAC(mac)
 	if err != nil {
 		return nil, err
@@ -78,15 +90,30 @@ func Connect(mac string, channel uint8) (*Client, error) {
 		channel: channel,
 		frames:  make(chan Frame, 32),
 		stopped: make(chan struct{}),
+		cb:      cb,
 	}
 	go c.readLoop()
 
 	// Let the link settle before the first command.
 	time.Sleep(settleDelay)
+	if !c.Alive() {
+		c.Close()
+		return nil, ErrNotConnected
+	}
 	return c, nil
 }
 
 func (c *Client) Channel() uint8 { return c.channel }
+
+// Alive reports whether the client can still carry exchanges: neither closed
+// nor dropped. A caller installing a fresh client checks it under its own lock,
+// which closes the window where the link drops between Connect returning and
+// the client being published.
+func (c *Client) Alive() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.closed && !c.lost
+}
 
 func (c *Client) transport() (rfcommConn, error) {
 	c.mu.Lock()
@@ -109,8 +136,8 @@ func (c *Client) readLoop() {
 
 		close(c.frames)
 
-		if !voluntary && c.OnDisconnect != nil {
-			c.OnDisconnect()
+		if !voluntary && c.cb.OnDisconnect != nil {
+			c.cb.OnDisconnect(c)
 		}
 	}()
 
@@ -150,8 +177,8 @@ func (c *Client) readLoop() {
 				break
 			}
 			acc = acc[used:]
-			if c.OnFrame != nil {
-				c.OnFrame(f)
+			if c.cb.OnFrame != nil {
+				c.cb.OnFrame(f)
 			}
 			select {
 			case c.frames <- f:
@@ -254,15 +281,6 @@ func (c *Client) Set(setCmd, getCmd Command, payload []byte) (Frame, bool) {
 	return f, err == nil
 }
 
-// SetBool is a shorthand for toggles.
-func (c *Client) SetBool(setCmd, getCmd Command, on bool) {
-	var v byte
-	if on {
-		v = 1
-	}
-	c.Set(setCmd, getCmd, []byte{v})
-}
-
 // ApplyEQ sends an equaliser curve, one frame per band.
 //
 // The EQ family uses VendorEQ and answers with EQResponse (0F 82), not with
@@ -293,6 +311,25 @@ func (c *Client) ApplyEQ(bands []EQBand, masterGain float64, v1 bool) error {
 		time.Sleep(80 * time.Millisecond)
 	}
 	return nil
+}
+
+// Raw sends an arbitrary frame once and returns the first frame that comes
+// back within the timeout, whatever its opcode. Reserved for exploration: a
+// raw `set` acknowledges on its get opcode and an EQ frame on 0F 82, so no
+// opcode rule can be assumed. Never retried — an unknown command may carry a
+// side effect.
+func (c *Client) Raw(cmd Command, payload []byte, vendor [2]byte) (Frame, error) {
+	if len(payload) > 0xFF {
+		return Frame{}, fmt.Errorf("payload of %d bytes: the length field holds 255 at most", len(payload))
+	}
+	c.exMu.Lock()
+	defer c.exMu.Unlock()
+
+	c.drain()
+	if err := c.write(Encode(cmd, payload, vendor)); err != nil {
+		return Frame{}, err
+	}
+	return c.await(func(Frame) bool { return true }, defaultTimeout)
 }
 
 // Close shuts the control connection down.
