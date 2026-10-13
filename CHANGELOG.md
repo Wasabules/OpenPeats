@@ -9,7 +9,16 @@ publishes it as the release body, so every version needs one before it is
 tagged. Changes are recorded under Unreleased as they land; cutting a release
 renames that heading.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-13
+
+The desktop app no longer needs the earbuds' Bluetooth address typed in: with
+nothing connected, it lists the devices paired with the computer and connects
+to the one you pick. Both apps also get an icon of their own.
+
+The list has been tried on Windows only, with the earbuds paired but still in
+their case; it has not yet been tried with earbuds already connected. The
+Android app is rebuilt on newer libraries and has not yet been re-checked on a
+phone. Reports are welcome.
 
 ### Added
 
@@ -30,6 +39,10 @@ renames that heading.
 - Android: built with Android Gradle Plugin 9, Kotlin 2.4 and current Compose
   libraries. The app still targets Android 15 and runs from Android 8, as
   before.
+- Desktop: built on Wails 2.16, which fixes a memory leak on Linux.
+- Two development dependencies flagged by security advisories were updated:
+  the web server behind `wails dev` and a serialiser Svelte uses while
+  building. Neither was ever part of the released files.
 
 ## [0.4.0] - 2026-10-13
 
@@ -191,6 +204,7 @@ First release.
 - CI on Linux and Windows, and a release workflow producing the Linux, Windows
   and Android artefacts plus `SHA256SUMS`.
 
+[0.5.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.2.0
