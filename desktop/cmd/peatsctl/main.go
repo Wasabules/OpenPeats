@@ -39,7 +39,7 @@ func main() {
 
 	if strings.TrimSpace(*addr) == "" {
 		fmt.Fprintln(os.Stderr, i18n.T("cli.addrRequired"))
-		fmt.Fprintln(os.Stderr, i18n.T("cli.addrHint"))
+		listDevices()
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -116,6 +116,29 @@ func localeFromArgs(args []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// listDevices prints the audio devices paired with this computer, so the
+// address to pass with -addr is right there. Where the system cannot list
+// them, it says where to look instead.
+func listDevices() {
+	devices, err := peats.PairedAudioDevices()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, i18n.T("cli.listFailed", "error", explain(err)))
+	}
+	if len(devices) == 0 {
+		fmt.Fprintln(os.Stderr, i18n.T("cli.addrHint"))
+		return
+	}
+	fmt.Fprintln(os.Stderr, "\n"+i18n.T("cli.pairedDevices"))
+	for _, d := range devices {
+		status := i18n.T("cli.deviceNotConnected")
+		if d.Connected {
+			status = i18n.T("cli.deviceConnected")
+		}
+		fmt.Fprintf(os.Stderr, "  %s  %-24s %s\n", d.Address, d.Name, status)
+	}
+	fmt.Fprintln(os.Stderr)
 }
 
 func explain(err error) string {

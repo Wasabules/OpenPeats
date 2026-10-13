@@ -45,6 +45,7 @@ go build ./cmd/peatsctl
 ./peatsctl -addr 98:80:BB:40:D4:ED           # read only
 ./peatsctl -addr 98:80:BB:40:D4:ED -anc 1    # write the ANC mode, then read back
 ./peatsctl -addr 98:80:BB:40:D4:ED -lang fr  # French output
+./peatsctl                                   # no address: lists the paired audio devices
 ```
 
 This is the tool to use when bringing up a platform whose transport has never
@@ -57,10 +58,11 @@ internal/peats/protocol.go     frames, opcodes, EQ encoding and limits — pure,
 internal/peats/client.go       exchanges, retry, callbacks — no OS
 internal/peats/transport.go    rfcommConn interface, var dialRFCOMM, channel sweep
 internal/peats/transport_*.go  one implementation per OS, chosen by build tag
+internal/peats/devices*.go     paired audio devices to pick from, one lister per OS
 internal/i18n/                 catalogue for what Go renders itself
 message.go                     Message: the {key, args} pairs Go emits
 app.go                         application state, lifecycle, language
-session.go                     connect, disconnect, recovery after a reboot
+session.go                     paired devices, connect, disconnect, recovery after a reboot
 features.go                    feature table: refresh, writes, EQ, raw frames
 battery.go                     level polling and low-battery alerts
 settings.go                    what survives a restart (the last address)
@@ -72,6 +74,11 @@ frontend/src/locales/          UI catalogues (source of truth: en.json)
 `init()`. Adding a platform means adding a file with the right build tag and
 implementing `rfcommConn` + `isTimeout`; nothing else moves.
 `transport_stub.go` (`//go:build !linux && !windows`) returns `ErrUnsupported`.
+
+`listPaired` follows the same pattern for the devices the window offers when
+nothing is connected: Windows reads the system's paired list from
+`bthprops.cpl`, Linux asks BlueZ over the system D-Bus. Where no file fills it
+in, the list reports `ErrUnsupported` and the address field remains the way in.
 
 ## Localisation
 
@@ -157,6 +164,13 @@ channel 11 accepts the connection. `WSAEADDRINUSE` (10048) is the equivalent of
 Linux's `EBUSY` — same busy channel 10. `WSAEADDRNOTAVAIL` (10049) on *every*
 channel means the device is paired but not connected: "paired" is not enough,
 Windows must have established the link.
+
+**The Bluetooth API structs are not packed.** Unlike `SOCKADDR_BTH`,
+`BLUETOOTH_DEVICE_SEARCH_PARAMS` and `BLUETOOTH_DEVICE_INFO` use natural
+alignment — 40 and 560 bytes on 64-bit Windows, as Go lays them out. The API
+checks `dwSize`, so a wrong layout fails outright rather than misreading; a
+test pins both sizes, and the listing was checked against this machine's
+paired devices.
 
 **Low-battery notifications do not work.** `notifyLowBattery` calls
 `notify-send`, which does not exist on Windows; the alert stays visible inside

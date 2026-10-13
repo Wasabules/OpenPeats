@@ -11,6 +11,16 @@ renames that heading.
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop: pick your earbuds from a list.** With nothing connected, the
+  window lists the audio devices paired with the computer, connected ones
+  first and each marked as connected or not; picking one connects to it. The
+  address no longer has to be looked up in the system settings, and the field
+  at the top stays for a device the list does not show. On Linux the list
+  comes from BlueZ and has not yet been tried with real earbuds.
+- `peatsctl` run without `-addr` lists the same devices.
+
 ### Changed
 
 - Android: built with Android Gradle Plugin 9, Kotlin 2.4 and current Compose
