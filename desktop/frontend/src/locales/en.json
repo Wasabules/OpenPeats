@@ -60,7 +60,13 @@
   "card.transparency.title": "Transparency level",
   "card.voicePrompts.title": "Voice prompts",
 
-  "empty.body": "Enter the Bluetooth address of your earbuds — it is listed in your system's Bluetooth settings — take them out of their case, then connect. If multipoint is on and your phone holds the control channel, turn Bluetooth off there first.",
+  "devices.connected": "Connected",
+  "devices.hint": "Pick your earbuds among the audio devices paired with this computer. Take them out of their case first: only connected earbuds can answer.",
+  "devices.lastUsed": "Last used",
+  "devices.none": "No audio device is paired with this computer yet. Pair your earbuds in the system's Bluetooth settings and they will show up here.",
+  "devices.notConnected": "Not connected",
+
+  "empty.body": "Not in the list? Type the address in the field at the top — the system's Bluetooth settings show it. If multipoint is on and your phone holds the control channel, turn Bluetooth off there first.",
   "empty.title": "Earbuds not connected",
 
   "eq.bands": "{count} bands",
@@ -80,7 +86,8 @@
   "error.invalidAddress": "Invalid Bluetooth address: expected six hex bytes separated by colons, e.g. AA:BB:CC:DD:EE:FF.",
   "error.invalidCommand": "Invalid command: expected 2 hex bytes (e.g. 0306).",
   "error.invalidPayload": "Invalid hex payload.",
-  "error.noAddress": "Enter the Bluetooth address of your earbuds first — it is listed in your system's Bluetooth settings.",
+  "error.listFailed": "The paired devices could not be listed: {error}",
+  "error.noAddress": "Pick your earbuds in the list, or enter their Bluetooth address first.",
   "error.noChannel": "No RFCOMM channel. Earbuds off, in their case, or not paired.",
   "error.notConnected": "Not connected.",
   "error.payloadTooLong": "Payload too long: a frame carries 255 bytes at most.",

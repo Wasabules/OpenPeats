@@ -16,7 +16,7 @@ import (
 // The App is split by concern, all in package main so Wails binds one type:
 //
 //	app.go       state, lifecycle, events, language
-//	session.go   connect, disconnect, recovery after a reboot
+//	session.go   paired devices, connect, disconnect, recovery after a reboot
 //	features.go  the feature table, refresh, writes, EQ, raw frames
 //	battery.go   level polling and low-battery alerts
 //	settings.go  what survives a restart

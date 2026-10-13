@@ -83,6 +83,7 @@ cd desktop
 go build ./cmd/peatsctl
 ./peatsctl -addr 98:80:BB:40:D4:ED           # read only
 ./peatsctl -addr 98:80:BB:40:D4:ED -anc 1    # write the ANC mode, then read back
+./peatsctl                                   # no address: lists the paired audio devices
 ```
 
 This is the tool for bringing up a platform whose transport has never run: it
@@ -145,10 +146,11 @@ internal/peats/protocol.go     frames, opcodes, EQ encoding and limits — pure,
 internal/peats/client.go       exchanges, retry, callbacks — no OS
 internal/peats/transport.go    rfcommConn interface, var dialRFCOMM, channel sweep
 internal/peats/transport_*.go  one implementation per OS, chosen by build tag
+internal/peats/devices*.go     paired audio devices to pick from, one lister per OS
 internal/i18n/                 catalogue for what Go renders itself
 message.go                     Message: the {key, args} pairs Go emits
 app.go                         application state, lifecycle, language
-session.go                     connect, disconnect, recovery after a reboot
+session.go                     paired devices, connect, disconnect, recovery after a reboot
 features.go                    feature table: refresh, writes, EQ, raw frames
 battery.go                     level polling and low-battery alerts
 settings.go                    what survives a restart (the last address)
@@ -159,6 +161,11 @@ frontend/src/                  Svelte interface
 `init()`. Adding a platform means adding a file with the right build tag and
 implementing `rfcommConn` + `isTimeout`; nothing else moves.
 `transport_stub.go` (`//go:build !linux && !windows`) returns `ErrUnsupported`.
+
+`listPaired` follows the same pattern for the devices the window offers when
+nothing is connected: Windows reads the system's paired list from
+`bthprops.cpl`, Linux asks BlueZ over the system D-Bus. Where no file fills it
+in, the list reports `ErrUnsupported` and the address field remains the way in.
 
 ### The i18n boundary between Go and the frontend
 

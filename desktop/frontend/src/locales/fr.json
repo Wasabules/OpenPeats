@@ -60,7 +60,13 @@
   "card.transparency.title": "Niveau de transparence",
   "card.voicePrompts.title": "Invites vocales",
 
-  "empty.body": "Saisissez l'adresse Bluetooth de vos écouteurs — elle figure dans les paramètres Bluetooth du système —, sortez-les de l'étui, puis connectez-vous. Si le multipoint est actif et que votre téléphone tient le canal de contrôle, coupez-y le Bluetooth au préalable.",
+  "devices.connected": "Connecté",
+  "devices.hint": "Choisissez vos écouteurs parmi les appareils audio appairés à cet ordinateur. Sortez-les d'abord de leur étui : seuls des écouteurs connectés peuvent répondre.",
+  "devices.lastUsed": "Dernière connexion",
+  "devices.none": "Aucun appareil audio n'est encore appairé à cet ordinateur. Appairez vos écouteurs dans les paramètres Bluetooth du système : ils apparaîtront ici.",
+  "devices.notConnected": "Non connecté",
+
+  "empty.body": "Absents de la liste ? Saisissez leur adresse dans le champ en haut — les paramètres Bluetooth du système l'indiquent. Si le multipoint est actif et que votre téléphone tient le canal de contrôle, coupez-y le Bluetooth au préalable.",
   "empty.title": "Écouteurs non connectés",
 
   "eq.bands": "{count} bandes",
@@ -80,7 +86,8 @@
   "error.invalidAddress": "Adresse Bluetooth invalide : six octets hex séparés par des deux-points attendus, ex. AA:BB:CC:DD:EE:FF.",
   "error.invalidCommand": "Commande invalide : attendu 2 octets hex (ex. 0306).",
   "error.invalidPayload": "Payload hex invalide.",
-  "error.noAddress": "Saisissez d'abord l'adresse Bluetooth de vos écouteurs — elle figure dans les paramètres Bluetooth du système.",
+  "error.listFailed": "Impossible de lister les appareils appairés : {error}",
+  "error.noAddress": "Choisissez d'abord vos écouteurs dans la liste, ou saisissez leur adresse Bluetooth.",
   "error.noChannel": "Aucun canal RFCOMM. Écouteurs éteints, dans l'étui, ou non appairés.",
   "error.notConnected": "Non connecté.",
   "error.payloadTooLong": "Payload trop long : une trame transporte 255 octets au plus.",

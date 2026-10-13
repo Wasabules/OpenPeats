@@ -116,14 +116,7 @@ func dialWindows(addr [6]byte, channel uint8, timeout time.Duration) (rfcommConn
 		return nil, fmt.Errorf("socket AF_BTH: %w", err)
 	}
 
-	// BTH_ADDR carries the 48-bit address in its low bytes, read in the
-	// natural MAC order.
-	var bt uint64
-	for _, b := range addr {
-		bt = bt<<8 | uint64(b)
-	}
-
-	sa := encodeSockaddrBTH(bt, uint32(channel))
+	sa := encodeSockaddrBTH(toBTHAddr(addr), uint32(channel))
 
 	// Switch to non-blocking so the connect attempt can be bounded.
 	nonblocking := uint32(1)

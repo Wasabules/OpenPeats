@@ -70,6 +70,27 @@ func (a *App) Connect(mac string) Message {
 	return Message{}
 }
 
+// Devices answers PairedDevices: the list, or why there is none.
+type Devices struct {
+	Devices []peats.Device `json:"devices"`
+	// Error is empty when the list could be read.
+	Error Message `json:"error"`
+}
+
+// PairedDevices lists the audio devices paired with this computer, connected
+// ones first, so the user picks the earbuds instead of looking up their
+// address. It asks the operating system only: nothing is sent to any device.
+func (a *App) PairedDevices() Devices {
+	devices, err := peats.PairedAudioDevices()
+	switch {
+	case errors.Is(err, peats.ErrUnsupported):
+		return Devices{Devices: []peats.Device{}, Error: msg("error.unsupported")}
+	case err != nil:
+		return Devices{Devices: []peats.Device{}, Error: msg("error.listFailed", "error", err.Error())}
+	}
+	return Devices{Devices: devices}
+}
+
 // install publishes a freshly dialed client as the current one. It refuses a
 // client that already dropped: checking under the same lock handleDisconnect
 // takes means a drop is seen either here or there, never by neither.

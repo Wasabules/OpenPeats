@@ -10,7 +10,7 @@
   import { LOCALES, locale, setLocale, t } from "./lib/i18n.js";
 
   import {
-    Connect, Disconnect, Refresh, GetState,
+    Connect, Disconnect, Refresh, GetState, PairedDevices,
     SetANCMode, SetANCLevel, SetTransparencyLevel,
     SetGameMode, SetLEAudio, SetTouchDisabled,
     SetVoicePack, SetPromptVolume,
@@ -41,7 +41,7 @@
   });
 
   // No address is built in: Go remembers the last one that connected and
-  // hands it over with the state.
+  // hands it over with the state, and the paired devices fill it otherwise.
   let mac = $state("");
   let tab = $state("audio");
   let busy = $state(false);
@@ -50,6 +50,11 @@
   /** Message from Go: { key, args }. Empty key means no error. */
   let connError = $state(/** @type {import("../wailsjs/go/models").main.Message | null} */ (null));
   let alert = $state(/** @type {{ labelKey: string, percent: number } | null} */ (null));
+
+  /** @type {import("../wailsjs/go/models").peats.Device[]} */
+  let devices = $state([]);
+  let devicesError = $state(/** @type {import("../wailsjs/go/models").main.Message | null} */ (null));
+  let devicesLoaded = $state(false);
 
   let rawCmd = $state("0306");
   let rawPayload = $state("");
@@ -155,6 +160,43 @@
   }
 
   const doConnect = () => run(async () => { connError = await Connect(mac); });
+
+  const sameAddress = (a, b) =>
+    (a || "").trim().toUpperCase() === (b || "").trim().toUpperCase();
+
+  const pick = (d) => { mac = d.address; doConnect(); };
+
+  // Go lists the paired audio devices, connected ones first. Only a
+  // connected device is put in an empty field: guessing among devices the
+  // system is not even linked to would as often pick a speaker as earbuds.
+  let listing = false;
+  async function loadDevices() {
+    if (listing) return;
+    listing = true;
+    try {
+      const r = await PairedDevices();
+      devices = r.devices ?? [];
+      devicesError = r.error?.key ? r.error : null;
+      if (!mac.trim() && devices[0]?.connected) mac = devices[0].address;
+    } catch {
+      // Bindings not injected yet: the next tick tries again.
+    } finally {
+      listing = false;
+      devicesLoaded = true;
+    }
+  }
+
+  // While nothing is connected the list stays current: taking the earbuds
+  // out of their case turns them connected within seconds, which is the
+  // moment to pick them. A derived boolean, so a state push that leaves the
+  // connection as it was does not restart the timer.
+  const connected = $derived(device.connected);
+  $effect(() => {
+    if (connected) return;
+    loadDevices();
+    const timer = setInterval(loadDevices, 4000);
+    return () => clearInterval(timer);
+  });
   const doDisconnect = () => run(Disconnect);
   const doRefresh = () => run(Refresh);
 
@@ -225,7 +267,35 @@
   {#if !device.connected}
     <div class="empty-state">
       <h2>{$t("empty.title")}</h2>
-      <p class="dim">{$t("empty.body")}</p>
+      <p class="dim">{$t("devices.hint")}</p>
+
+      {#if devicesError}
+        <p class="note">{$t(devicesError)}</p>
+      {:else if devicesLoaded && devices.length === 0}
+        <p class="note">{$t("devices.none")}</p>
+      {:else}
+        <ul class="devices">
+          {#each devices as d (d.address)}
+            <li>
+              <button class="device" class:selected={sameAddress(d.address, mac)}
+                      disabled={busy} onclick={() => pick(d)}>
+                <span class="device-name">{d.name || d.address}</span>
+                <span class="device-address">{d.address}</span>
+                <span class="device-tags">
+                  {#if sameAddress(d.address, device.mac)}
+                    <span class="tag">{$t("devices.lastUsed")}</span>
+                  {/if}
+                  <span class="tag" class:on={d.connected}>
+                    {d.connected ? $t("devices.connected") : $t("devices.notConnected")}
+                  </span>
+                </span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <p class="faint manual">{$t("empty.body")}</p>
     </div>
 
   {:else if tab === "audio"}
@@ -414,9 +484,34 @@
   .single { display: flex; flex-direction: column; gap: 14px; max-width: 780px; }
   .single.wide { max-width: 900px; }
 
-  .empty-state { max-width: 54ch; margin: 56px auto; text-align: center; }
+  .empty-state { max-width: 60ch; margin: 48px auto; text-align: center; }
   .empty-state h2 { font-size: 1.15rem; margin: 0 0 10px; }
   .empty-state p { font-size: 0.89rem; line-height: 1.6; margin: 0; }
+  .empty-state .note { margin: 22px 0; color: var(--text-dim); }
+  .empty-state .manual { font-size: 0.8rem; }
+
+  .devices {
+    list-style: none; margin: 22px 0; padding: 0;
+    display: flex; flex-direction: column; gap: 8px; text-align: left;
+  }
+  .device {
+    width: 100%; display: grid; grid-template-columns: 1fr auto;
+    align-items: center; gap: 2px 14px; padding: 11px 14px; text-align: left;
+    background: var(--bg-raised); border-color: var(--border);
+  }
+  .device.selected { border-color: var(--accent-dim); }
+  .device-name { font-weight: 700; }
+  .device-address {
+    grid-column: 1; font-family: ui-monospace, monospace;
+    font-size: 0.78rem; color: var(--text-faint);
+  }
+  .device-tags { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; }
+  .tag {
+    font-size: 0.74rem; padding: 2px 9px; border-radius: 20px;
+    border: 1px solid var(--border-strong); color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .tag.on { color: var(--good); border-color: rgba(63, 191, 127, 0.45); }
 
   .field { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; }
 
