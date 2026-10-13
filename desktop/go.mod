@@ -1,11 +1,11 @@
 module openpeats
 
-go 1.25.0
+go 1.26.0
 
 require (
-	github.com/godbus/dbus/v5 v5.1.0
-	github.com/wailsapp/wails/v2 v2.15.0
-	golang.org/x/sys v0.47.0
+	github.com/godbus/dbus/v5 v5.2.2
+	github.com/wailsapp/wails/v2 v2.16.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
