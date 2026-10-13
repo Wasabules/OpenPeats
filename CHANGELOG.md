@@ -39,7 +39,8 @@ phone. Reports are welcome.
 - Android: built with Android Gradle Plugin 9, Kotlin 2.4 and current Compose
   libraries. The app still targets Android 15 and runs from Android 8, as
   before.
-- Desktop: built on Wails 2.16, which fixes a memory leak on Linux.
+- Desktop: built with Go 1.26 and Wails 2.16, which fixes a memory leak on
+  Linux.
 - Two development dependencies flagged by security advisories were updated:
   the web server behind `wails dev` and a serialiser Svelte uses while
   building. Neither was ever part of the released files.

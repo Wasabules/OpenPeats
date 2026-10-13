@@ -22,7 +22,10 @@ permissions:
 # Actions are pinned to a full commit SHA, with the version in a comment:
 # a tag can be moved, a SHA cannot. Dependabot keeps both up to date.
 env:
-  GO_VERSION: "1.25"
+  # No older than the go directive in desktop/go.mod: setup-go sets
+  # GOTOOLCHAIN=local, so an older Go stops there instead of fetching a newer
+  # toolchain.
+  GO_VERSION: "1.26"
   NODE_VERSION: "22"
   JAVA_VERSION: "17"
 
