@@ -24,7 +24,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: PeatsAudio version
+      label: OpenPeats version
       placeholder: "0.2.1"
     validations:
       required: true

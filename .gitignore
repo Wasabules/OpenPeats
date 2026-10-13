@@ -34,15 +34,15 @@ probe/peatsprobe.exe
 # package to generate its bindings *before* the frontend is compiled. With no
 # directory the embed pattern matches nothing and the build fails before it
 # starts. The `all:` prefix is what makes a lone dotfile enough to satisfy it.
-peatsaudio/frontend/dist/*
-!peatsaudio/frontend/dist/.gitkeep
+desktop/frontend/dist/*
+!desktop/frontend/dist/.gitkeep
 
-peatsaudio/frontend/node_modules/
-peatsaudio/frontend/wailsjs/
+desktop/frontend/node_modules/
+desktop/frontend/wailsjs/
 node_modules/
 
 # Release staging, produced by .github/workflows/release.yml.
-# Anchored: an unanchored "dist/" would also swallow peatsaudio/frontend/dist,
+# Anchored: an unanchored "dist/" would also swallow desktop/frontend/dist,
 # whose tracked .gitkeep the Wails build depends on.
 /dist/
 
@@ -64,12 +64,12 @@ android/.kotlin/
 *.jks
 *.keystore
 
-# peatsctl, built where CLAUDE.md says to build it (cd peatsaudio) or at the
+# peatsctl, built where CLAUDE.md says to build it (cd desktop) or at the
 # root.
 /peatsctl
 /peatsctl.exe
-peatsaudio/peatsctl
-peatsaudio/peatsctl.exe
+desktop/peatsctl
+desktop/peatsctl.exe
 
 # Worktrees Claude Code creates for parallel agents.
 .claude/worktrees/

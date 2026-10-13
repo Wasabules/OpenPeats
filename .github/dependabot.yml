@@ -17,7 +17,7 @@ updates:
 
   - package-ecosystem: gomod
     directories:
-      - /peatsaudio
+      - /desktop
     schedule:
       interval: monthly
     groups:
@@ -26,7 +26,7 @@ updates:
 
   - package-ecosystem: npm
     directories:
-      - /peatsaudio/frontend
+      - /desktop/frontend
     schedule:
       interval: monthly
     groups:

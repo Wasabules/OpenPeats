@@ -14,8 +14,8 @@ catalogues, with English as the source language and French shipped alongside:
 
 | Surface | Catalogue |
 |---|---|
-| Desktop UI | `peatsaudio/frontend/src/locales/*.json` |
-| Desktop notifications, `peatsctl` | `peatsaudio/internal/i18n/locales/*.json` |
+| Desktop UI | `desktop/frontend/src/locales/*.json` |
+| Desktop notifications, `peatsctl` | `desktop/internal/i18n/locales/*.json` |
 | Android | `android/app/src/main/res/values*/strings.xml` |
 
 Adding a language must never require touching application code. English is the
@@ -24,15 +24,15 @@ missing keys, extra keys, mismatched `{placeholders}` — so a drifting
 translation fails CI rather than shipping a raw key.
 
 `README.fr.md` is the only translated document. The technical documents
-(`PROTOCOL.md`, `peatsaudio/README.md`) are English only, deliberately:
+(`PROTOCOL.md`, `desktop/README.md`) are English only, deliberately:
 duplicating a reference means maintaining two that eventually disagree.
 
 ## Commands
 
-### Desktop application (`peatsaudio/`, Wails + Go + Svelte)
+### Desktop application (`desktop/`, Wails + Go + Svelte)
 
 ```bash
-cd peatsaudio
+cd desktop
 wails build -tags webkit2_41   # Ubuntu 24.04: the tag is mandatory (no more webkit2gtk-4.0)
 wails dev -tags webkit2_41     # development
 ```
@@ -43,7 +43,7 @@ enough.
 ### Tests
 
 ```bash
-cd peatsaudio
+cd desktop
 go test ./internal/... -v                          # unit tests, no hardware
 go test ./internal/peats -run TestVectorsEQBand -v  # a single test
 PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v   # needs the earbuds
@@ -57,7 +57,7 @@ client's exchange rules (never retry a write, the ack opcodes, the EQ vendor)
 are tested against a fake transport in `client_test.go`.
 
 ```bash
-cd peatsaudio/frontend && npm run check     # svelte-check against the bindings
+cd desktop/frontend && npm run check     # svelte-check against the bindings
 cd android && ./gradlew :app:testDebugUnitTest
 ```
 
@@ -79,7 +79,7 @@ The frontend needs the Wails bindings (`frontend/wailsjs/`, git-ignored):
 ### peatsctl — validating a transport with no GUI
 
 ```bash
-cd peatsaudio
+cd desktop
 go build ./cmd/peatsctl
 ./peatsctl -addr 98:80:BB:40:D4:ED           # read only
 ./peatsctl -addr 98:80:BB:40:D4:ED -anc 1    # write the ANC mode, then read back
@@ -128,7 +128,7 @@ rather than shipping a release with nothing to read. The whole procedure is in
 
 ### A deliberate double implementation
 
-The protocol is written **twice** — in Go (`peatsaudio/internal/peats/`) and in
+The protocol is written **twice** — in Go (`desktop/internal/peats/`) and in
 Kotlin (`android/app/src/main/kotlin/com/openpeats/protocol/`) — from the same
 specification. This is not debt: ~350 lines that are cheap to port, and each
 platform keeps its native transport with no bridging layer.
@@ -187,12 +187,12 @@ retroactively, because the lines were never text to begin with.
 Transports cannot be derived from one another: writing the Windows transport as
 a mirror of Linux introduced two bugs there (an aligned struct instead of a
 packed one, `select` without `exceptfds`). The per-platform traps are
-documented in `peatsaudio/README.md`.
+documented in `desktop/README.md`.
 
 ## Protocol traps
 
 These silently break any client that ignores them. They are detailed in
-`peatsaudio/README.md` and `PROTOCOL.md` section 7.
+`desktop/README.md` and `PROTOCOL.md` section 7.
 
 - **Never retry a write.** Several `set` commands take effect *without*
   acknowledging (ANC mode, multipoint). Resending one replays the side effect —

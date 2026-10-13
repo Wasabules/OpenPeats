@@ -16,7 +16,7 @@ on Ubuntu 24.04, then on Windows 11 and Android.
 | Directory | Role |
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | Protocol specification, with the verification status of every point |
-| [`peatsaudio/`](peatsaudio/) | Desktop application (Wails + Go + Svelte) |
+| [`desktop/`](desktop/) | Desktop application (Wails + Go + Svelte) |
 | [`android/`](android/) | Android application (Kotlin + Jetpack Compose) |
 | [`probe/`](probe/) | Command line probe for exploring the protocol |
 
@@ -25,7 +25,7 @@ specification. That is deliberate: the ~350 lines of logic are cheap to port,
 and each platform keeps its native transport with no bridging layer.
 `PROTOCOL.md` remains the single reference.
 
-The reusable core is [`peatsaudio/internal/peats`](peatsaudio/internal/peats):
+The reusable core is [`desktop/internal/peats`](desktop/internal/peats):
 pure protocol (frames, opcodes, equaliser encoding) and the RFCOMM/SPP
 transport, with no dependency on the interface.
 
@@ -60,9 +60,9 @@ Prebuilt binaries for Linux, Windows and Android are attached to every
 ### Desktop
 
 ```bash
-cd peatsaudio
+cd desktop
 wails build -tags webkit2_41   # Ubuntu 24.04: webkit2gtk-4.1
-./build/bin/peatsaudio
+./build/bin/openpeats
 ```
 
 On Windows and macOS the `webkit2_41` tag does not apply: `wails build` is
@@ -87,8 +87,8 @@ Adding a language means adding catalogues, never touching application code:
 
 | Where | Add |
 |---|---|
-| Desktop UI | `peatsaudio/frontend/src/locales/<lang>.json`, then list it in `frontend/src/lib/i18n.js` |
-| Desktop notifications and `peatsctl` | `peatsaudio/internal/i18n/locales/<lang>.json` |
+| Desktop UI | `desktop/frontend/src/locales/<lang>.json`, then list it in `frontend/src/lib/i18n.js` |
+| Desktop notifications and `peatsctl` | `desktop/internal/i18n/locales/<lang>.json` |
 | Android | `android/app/src/main/res/values-<lang>/strings.xml` |
 
 English is the source language everywhere; a missing key falls back to English

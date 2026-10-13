@@ -39,14 +39,14 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
-        working-directory: peatsaudio
+        working-directory: desktop
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: peatsaudio/go.sum
+          cache-dependency-path: desktop/go.sum
 
       - name: Check formatting
         shell: bash
@@ -116,25 +116,25 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: peatsaudio/go.sum
+          cache-dependency-path: desktop/go.sum
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: peatsaudio/frontend/package-lock.json
+          cache-dependency-path: desktop/frontend/package-lock.json
 
       # Catalogues drift silently: a missing key renders as a raw identifier
       # and a mismatched placeholder drops an interpolated value. Neither is
       # visible in a diff of two JSON files.
       - name: Go catalogues
-        working-directory: peatsaudio
+        working-directory: desktop
         run: go test ./internal/i18n/ -v
 
       # Also checks that every key the Go side emits exists in the UI
       # catalogue, since nothing in the frontend source names those.
       - name: UI catalogues
-        working-directory: peatsaudio/frontend
+        working-directory: desktop/frontend
         run: |
           npm ci
           npm run check:locales
@@ -158,28 +158,28 @@ jobs:
       # a missing module — and regenerating it here is also what catches a
       # frontend call to a method the Go side no longer exposes.
       - name: Generate Wails bindings
-        working-directory: peatsaudio
+        working-directory: desktop
         run: wails generate module
 
       - name: Install
-        working-directory: peatsaudio/frontend
+        working-directory: desktop/frontend
         run: npm ci
 
       # svelte-check type-checks the components against the generated
       # bindings and models, and fails on any compiler warning.
       - name: Check
-        working-directory: peatsaudio/frontend
+        working-directory: desktop/frontend
         run: npm run check
 
       - name: Build
-        working-directory: peatsaudio/frontend
+        working-directory: desktop/frontend
         run: npm run build
 
       # Now that frontend/dist exists, the embed directive resolves and the
       # root package can finally be vetted — the only place the App itself
       # gets checked.
       - name: Vet the root package
-        working-directory: peatsaudio
+        working-directory: desktop
         run: go vet -tags webkit2_41 .
 
   android:

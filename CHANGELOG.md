@@ -6,7 +6,28 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The release workflow reads the section matching the tag it is building and
 publishes it as the release body, so every version needs one before it is
-tagged.
+tagged. Changes are recorded under Unreleased as they land; cutting a release
+renames that heading.
+
+## [Unreleased]
+
+### Added
+
+- The Windows installer is in French as well as English, following the
+  Windows display language.
+
+### Changed
+
+- **The desktop app is called OpenPeats**, like the repository and the Android
+  app. It used to ship as "PeatsAudio", which is the name of the manufacturer's
+  own app: the two were easy to confuse, and the name was not ours to use. The
+  program, its window, the Linux package and menu entry, the Windows installer
+  and the release files all carry the new name, and the source moved from
+  `peatsaudio/` to `desktop/`.
+- Upgrading needs nothing by hand. The `.deb` replaces the old `peatsaudio`
+  package, the Windows installer removes the PeatsAudio installation first, and
+  the remembered earbuds address is read from the old settings folder. The
+  interface language may need picking again once.
 
 ## [0.3.0] - 2026-10-13
 

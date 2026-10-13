@@ -1,5 +1,5 @@
 name: Another earbuds model
-description: Report what PeatsAudio sees on a model other than the H3.
+description: Report what OpenPeats sees on a model other than the H3.
 labels: [model]
 body:
   - type: markdown
@@ -47,4 +47,4 @@ body:
     id: notes
     attributes:
       label: Anything else
-      description: Features the official app offers on this model that PeatsAudio does not show, connection quirks, RFCOMM channel used…
+      description: Features the official app offers on this model that OpenPeats does not show, connection quirks, RFCOMM channel used…

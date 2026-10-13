@@ -1,6 +1,6 @@
 //go:build linux
 
-// Probe validating the PeatsAudio protocol over RFCOMM/SPP.
+// Probe validating the SoundPEATS control protocol over RFCOMM/SPP.
 //
 // Purpose: confirm on the wire what PROTOCOL.md describes from static
 // analysis. Sends one or more commands over a single connection, prints the
@@ -165,7 +165,7 @@ func connectRFCOMM(addr [6]byte, channel uint8, timeout time.Duration) (int, err
 	return fd, nil
 }
 
-// buildFrame assembles a PeatsAudio frame (see PROTOCOL.md section 2).
+// buildFrame assembles a SoundPEATS frame (see PROTOCOL.md section 2).
 //
 //	FF | 04 | 00 | len(payload) | vendorId(2) | command(2) | payload
 func buildFrame(cmd [2]byte, payload []byte, vendor [2]byte) []byte {

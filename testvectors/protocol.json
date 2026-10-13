@@ -1,5 +1,5 @@
 {
-  "about": "Golden vectors for the pure protocol layer, read by both the Go tests (peatsaudio/internal/peats/vectors_test.go) and the Kotlin tests (android/app/src/test/.../VectorsTest.kt). PROTOCOL.md stays the reference: a vector that disagrees with it is a bug in the vector. Bytes are hex strings, spaces ignored. Cases marked 'wire' were captured on or validated against an H3; the others pin down behaviour derived from them.",
+  "about": "Golden vectors for the pure protocol layer, read by both the Go tests (desktop/internal/peats/vectors_test.go) and the Kotlin tests (android/app/src/test/.../VectorsTest.kt). PROTOCOL.md stays the reference: a vector that disagrees with it is a bug in the vector. Bytes are hex strings, spaces ignored. Cases marked 'wire' were captured on or validated against an H3; the others pin down behaviour derived from them.",
 
   "encode": [
     { "name": "left battery read (wire)", "command": "0306", "vendor": "000A", "payload": "", "frame": "FF 04 00 00 00 0A 03 06" },

@@ -1,9 +1,9 @@
 ---
 name: release
-description: Cut a PeatsAudio release from this repository — write the CHANGELOG section, verify the tree, commit, tag and let the workflow publish. Use whenever the user asks to "sortir une release", "faire une release", "release 0.3.0", "tag a version", "publier une version", "cut a release", or asks what a release needs. Encodes the rules that are easy to get wrong — the version lives only in the tag, the release body comes from CHANGELOG.md, and commits carry no attribution trailer.
+description: Cut an OpenPeats release from this repository — write the CHANGELOG section, verify the tree, commit, tag and let the workflow publish. Use whenever the user asks to "sortir une release", "faire une release", "release 0.3.0", "tag a version", "publier une version", "cut a release", or asks what a release needs. Encodes the rules that are easy to get wrong — the version lives only in the tag, the release body comes from CHANGELOG.md, and commits carry no attribution trailer.
 ---
 
-# Cutting a PeatsAudio release
+# Cutting an OpenPeats release
 
 A release is `.github/workflows/release.yml` reacting to a `v*` tag. It builds
 Linux, Windows and Android, derives every version number from the tag, extracts
@@ -35,6 +35,11 @@ git log --oneline "$(git describe --tags --abbrev=0)"..HEAD
 Open `CHANGELOG.md` and add a section **at the top of the list**, above the
 previous version. English, like everything in this repository except
 `README.fr.md`.
+
+If an `## [Unreleased]` section is already there — changes are recorded in it
+as they land — rename its heading to the version and date rather than writing
+a new one, then reread it as a whole: entries written one change at a time
+rarely make the best release notes as they stand.
 
 The heading shape is not decorative — the workflow matches it with
 `index($0, "## [$VERSION]") == 1`, so it must start the line exactly like this:
@@ -91,7 +96,7 @@ CI covers this too — the release workflow even runs it again before building �
 but a red run costs a deleted tag. Run it locally first.
 
 ```bash
-cd peatsaudio
+cd desktop
 gofmt -l .                              # must print nothing
 go vet ./internal/... ./cmd/...
 go test ./internal/...
@@ -120,7 +125,7 @@ gh workflow run Release -f version=0.3.0 -f dry_run=true
 ```
 
 If `frontend/wailsjs/` is missing (it is git-ignored), regenerate it with
-`wails generate module` from `peatsaudio/` before building the frontend.
+`wails generate module` from `desktop/` before building the frontend.
 
 A finished `wails build` must leave `git status` clean. If it does not, a build
 artefact is escaping the ignore rules — fix that before releasing, do not commit
@@ -166,7 +171,7 @@ Then the tag — annotated, never lightweight, so the tag carries its own short
 summary:
 
 ```bash
-git tag -a v0.3.0 -m "PeatsAudio 0.3.0
+git tag -a v0.3.0 -m "OpenPeats 0.3.0
 
 One or two sentences on what this release is.
 

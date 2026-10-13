@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=OpenPeats
+GenericName=SoundPEATS earbud control
+Comment=Control ANC, equaliser, multipoint and batteries on SoundPEATS earbuds
+Exec=openpeats
+Icon=openpeats
+Terminal=false
+Categories=AudioVideo;Audio;Settings;
+Keywords=bluetooth;earbuds;headphones;anc;equalizer;soundpeats;
+
+# The desktop file itself is not translated through the application
+# catalogues: freedesktop expects the translations inline, keyed by locale.
+GenericName[fr]=Contrôle des écouteurs SoundPEATS
+Comment[fr]=Piloter l'ANC, l'égaliseur, le multipoint et les batteries d'écouteurs SoundPEATS

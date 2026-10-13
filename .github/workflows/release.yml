@@ -109,46 +109,46 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Stamp the version
-        working-directory: peatsaudio
+        working-directory: desktop
         run: |
           tmp=$(mktemp)
           jq --arg v "$VERSION" '.info.productVersion = $v' wails.json > "$tmp"
           mv "$tmp" wails.json
 
       - name: Build
-        working-directory: peatsaudio
+        working-directory: desktop
         run: wails build -tags webkit2_41 -clean -platform linux/amd64
 
       - name: Build peatsctl
-        working-directory: peatsaudio
+        working-directory: desktop
         run: CGO_ENABLED=0 go build -trimpath -o build/bin/peatsctl ./cmd/peatsctl
 
       - name: Package
         run: |
           set -euo pipefail
-          bin=$PWD/peatsaudio/build/bin
+          bin=$PWD/desktop/build/bin
           # Absolute: the staging steps below cd elsewhere, and a relative
           # output path would silently land in the wrong directory.
           out=$PWD/dist
           mkdir -p "$out"
 
           # --- tarball: the binaries plus the documents a user needs ---
-          stage=$(mktemp -d)/peatsaudio-$VERSION-linux-amd64
+          stage=$(mktemp -d)/openpeats-$VERSION-linux-amd64
           mkdir -p "$stage"
-          cp "$bin/peatsaudio" "$bin/peatsctl" "$stage/"
+          cp "$bin/openpeats" "$bin/peatsctl" "$stage/"
           cp README.md README.fr.md LICENSE "$stage/"
-          tar -czf "$out/peatsaudio-$VERSION-linux-amd64.tar.gz" \
+          tar -czf "$out/openpeats-$VERSION-linux-amd64.tar.gz" \
               -C "$(dirname "$stage")" "$(basename "$stage")"
 
           # --- .deb ---
           root=$(mktemp -d)
-          install -Dm755 "$bin/peatsaudio" "$root/usr/bin/peatsaudio"
+          install -Dm755 "$bin/openpeats" "$root/usr/bin/openpeats"
           install -Dm755 "$bin/peatsctl"   "$root/usr/bin/peatsctl"
-          install -Dm644 packaging/linux/peatsaudio.desktop \
-              "$root/usr/share/applications/peatsaudio.desktop"
-          install -Dm644 peatsaudio/build/appicon.png \
-              "$root/usr/share/icons/hicolor/512x512/apps/peatsaudio.png"
-          install -Dm644 LICENSE "$root/usr/share/doc/peatsaudio/copyright"
+          install -Dm644 packaging/linux/openpeats.desktop \
+              "$root/usr/share/applications/openpeats.desktop"
+          install -Dm644 desktop/build/appicon.png \
+              "$root/usr/share/icons/hicolor/512x512/apps/openpeats.png"
+          install -Dm644 LICENSE "$root/usr/share/doc/openpeats/copyright"
 
           mkdir -p "$root/DEBIAN"
           sed -e "s|@VERSION@|$VERSION|" \
@@ -156,7 +156,7 @@ jobs:
               packaging/linux/control.in > "$root/DEBIAN/control"
 
           dpkg-deb --build --root-owner-group "$root" \
-              "$out/peatsaudio_${VERSION}_amd64.deb"
+              "$out/openpeats_${VERSION}_amd64.deb"
 
           cp "$bin/peatsctl" "$out/peatsctl-$VERSION-linux-amd64"
           ls -lh "$out"
@@ -194,7 +194,7 @@ jobs:
 
       - name: Stamp the version
         shell: bash
-        working-directory: peatsaudio
+        working-directory: desktop
         run: |
           tmp=$(mktemp)
           jq --arg v "$VERSION" '.info.productVersion = $v' wails.json > "$tmp"
@@ -204,29 +204,29 @@ jobs:
       # artefacts.
       - name: Build
         shell: bash
-        working-directory: peatsaudio
+        working-directory: desktop
         run: wails build -clean -platform windows/amd64 -nsis
 
       - name: Build peatsctl
         shell: bash
-        working-directory: peatsaudio
+        working-directory: desktop
         run: CGO_ENABLED=0 go build -trimpath -o build/bin/peatsctl.exe ./cmd/peatsctl
 
       - name: Package
         shell: bash
         run: |
           set -euo pipefail
-          bin=$PWD/peatsaudio/build/bin
+          bin=$PWD/desktop/build/bin
           # Absolute: 7z runs from the staging directory below.
           out=$PWD/dist
           mkdir -p "$out"
 
-          stage=$(mktemp -d)/peatsaudio-$VERSION-windows-amd64
+          stage=$(mktemp -d)/openpeats-$VERSION-windows-amd64
           mkdir -p "$stage"
-          cp "$bin/peatsaudio.exe" "$bin/peatsctl.exe" "$stage/"
+          cp "$bin/openpeats.exe" "$bin/peatsctl.exe" "$stage/"
           cp README.md README.fr.md LICENSE "$stage/"
           (cd "$(dirname "$stage")" && \
-            7z a -tzip "$out/peatsaudio-$VERSION-windows-amd64.zip" \
+            7z a -tzip "$out/openpeats-$VERSION-windows-amd64.zip" \
                 "$(basename "$stage")")
 
           # Wails names the installer after the project, not the version.
@@ -235,7 +235,7 @@ jobs:
             echo "::error::NSIS installer not produced"
             exit 1
           fi
-          cp "$installer" "$out/peatsaudio-$VERSION-windows-amd64-installer.exe"
+          cp "$installer" "$out/openpeats-$VERSION-windows-amd64-installer.exe"
 
           cp "$bin/peatsctl.exe" "$out/peatsctl-$VERSION-windows-amd64.exe"
           ls -lh "$out"
@@ -391,10 +391,10 @@ jobs:
 
           | Platform | File |
           |---|---|
-          | Linux (Debian/Ubuntu) | `peatsaudio_${{ env.VERSION }}_amd64.deb` |
-          | Linux (portable) | `peatsaudio-${{ env.VERSION }}-linux-amd64.tar.gz` |
-          | Windows (installer) | `peatsaudio-${{ env.VERSION }}-windows-amd64-installer.exe` |
-          | Windows (portable) | `peatsaudio-${{ env.VERSION }}-windows-amd64.zip` |
+          | Linux (Debian/Ubuntu) | `openpeats_${{ env.VERSION }}_amd64.deb` |
+          | Linux (portable) | `openpeats-${{ env.VERSION }}-linux-amd64.tar.gz` |
+          | Windows (installer) | `openpeats-${{ env.VERSION }}-windows-amd64-installer.exe` |
+          | Windows (portable) | `openpeats-${{ env.VERSION }}-windows-amd64.zip` |
           | Android | `openpeats-${{ env.VERSION }}.apk` |
 
           The Linux build needs `libwebkit2gtk-4.1-0` (Ubuntu 24.04+,
@@ -415,7 +415,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', env.VERSION) || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          name: PeatsAudio ${{ env.VERSION }}
+          name: OpenPeats ${{ env.VERSION }}
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           generate_release_notes: true
           fail_on_unmatched_files: true

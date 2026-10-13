@@ -22,7 +22,7 @@ keep them local.
 ## Changing the protocol
 
 The protocol is implemented twice on purpose — Go in
-`peatsaudio/internal/peats/`, Kotlin in `android/.../protocol/` — and
+`desktop/internal/peats/`, Kotlin in `android/.../protocol/` — and
 [PROTOCOL.md](PROTOCOL.md) is the single reference. A protocol change goes, in
 this order:
 
@@ -50,8 +50,8 @@ French alongside:
 
 | Surface | Catalogue |
 |---|---|
-| Desktop UI | `peatsaudio/frontend/src/locales/*.json` |
-| Desktop notifications, `peatsctl` | `peatsaudio/internal/i18n/locales/*.json` |
+| Desktop UI | `desktop/frontend/src/locales/*.json` |
+| Desktop notifications, `peatsctl` | `desktop/internal/i18n/locales/*.json` |
 | Android | `android/app/src/main/res/values*/strings.xml` |
 
 Add every new key to both languages. If you do not speak French, add the
@@ -64,13 +64,13 @@ imperfect one. Adding a language never requires touching application code.
 CI runs all of this; running it first saves a round trip.
 
 ```bash
-cd peatsaudio
+cd desktop
 gofmt -l .                       # must print nothing
 go vet ./internal/... ./cmd/...
 go test -race ./internal/...     # -race needs a C toolchain; drop it otherwise
 
 cd frontend
-wails generate module            # once: the bindings are git-ignored (run from peatsaudio/)
+wails generate module            # once: the bindings are git-ignored (run from desktop/)
 npm ci
 npm run check                    # svelte-check
 npm run check:locales            # catalogue parity, and the keys Go emits
@@ -82,7 +82,7 @@ python3 ../.github/scripts/check-android-strings.py
 ```
 
 Building and running the apps is described in
-[peatsaudio/README.md](peatsaudio/README.md) and [CLAUDE.md](CLAUDE.md).
+[desktop/README.md](desktop/README.md) and [CLAUDE.md](CLAUDE.md).
 
 ## Commits and pull requests
 
@@ -92,7 +92,7 @@ Building and running the apps is described in
   `docs:`). The body explains *why*, for someone reading it in a year.
 - Bug fixes come with the test that would have caught them where one can be
   written without hardware — the fake transport in
-  `peatsaudio/internal/peats/client_test.go` covers most client behaviour.
+  `desktop/internal/peats/client_test.go` covers most client behaviour.
 
 ## Reporting a security issue
 

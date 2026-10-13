@@ -1,4 +1,4 @@
-# PeatsAudio protocol — reverse engineering
+# SoundPEATS control protocol — reverse engineering
 
 Target: SOUNDPEATS H3 (`98:80:BB:40:D4:ED`)
 Source: `com.xingkeqi.peats` v1.9.39 (versionCode 9921088), pulled over ADB root
@@ -468,7 +468,7 @@ Enabling multipoint (`03 15 = 01`) works, but triggers a link reconfiguration:
 3. if a second device connects, **it monopolises the SPP control channel** and
    every channel disappears from the scan.
 
-Observed: once multipoint was on, the phone (with the PeatsAudio app open) took
+Observed: once multipoint was on, the phone (with the official PeatsAudio app open) took
 the link over and channels 11/12 vanished; they came back after turning the
 phone's Bluetooth off. A desktop client must anticipate this and tell the user,
 rather than reporting a failure.

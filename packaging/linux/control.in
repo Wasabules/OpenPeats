@@ -1,13 +1,15 @@
-Package: peatsaudio
+Package: openpeats
 Version: @VERSION@
 Section: sound
 Priority: optional
 Architecture: amd64
 Depends: libc6, libgtk-3-0, libwebkit2gtk-4.1-0
+Conflicts: peatsaudio
+Replaces: peatsaudio
 Maintainer: OpenPeats contributors <39313803+Wasabules@users.noreply.github.com>
 Homepage: https://github.com/@REPO@
 Description: Open control for SoundPEATS earbuds
- PeatsAudio drives SoundPEATS earbuds over the RFCOMM/SPP control protocol:
+ OpenPeats drives SoundPEATS earbuds over the RFCOMM/SPP control protocol:
  noise cancelling and its sub-modes, a parametric equaliser, LDAC and
  multipoint, per-earbud and case batteries, game mode, LE Audio and voice
  prompts.

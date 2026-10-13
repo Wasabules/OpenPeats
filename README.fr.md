@@ -12,7 +12,7 @@ sous Ubuntu 24.04, puis sous Windows 11 et Android.
 
 > **Traduction.** La version anglaise fait foi ; ce fichier est la seule
 > traduction maintenue. La documentation technique (`PROTOCOL.md`,
-> `peatsaudio/README.md`) n'existe qu'en anglais : la dupliquer reviendrait à
+> `desktop/README.md`) n'existe qu'en anglais : la dupliquer reviendrait à
 > maintenir deux références qui finiraient par diverger.
 
 ## Contenu
@@ -20,7 +20,7 @@ sous Ubuntu 24.04, puis sous Windows 11 et Android.
 | Dossier | Rôle |
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | Spécification du protocole, avec le statut de vérification de chaque point |
-| [`peatsaudio/`](peatsaudio/) | Application de bureau (Wails + Go + Svelte) |
+| [`desktop/`](desktop/) | Application de bureau (Wails + Go + Svelte) |
 | [`android/`](android/) | Application Android (Kotlin + Jetpack Compose) |
 | [`probe/`](probe/) | Sonde en ligne de commande pour explorer le protocole |
 
@@ -29,7 +29,7 @@ même spécification. C'est délibéré : les ~350 lignes de logique sont peu
 coûteuses à porter, et chaque plateforme garde ainsi son transport natif sans
 couche de liaison. `PROTOCOL.md` reste la référence unique.
 
-Le cœur réutilisable est [`peatsaudio/internal/peats`](peatsaudio/internal/peats) :
+Le cœur réutilisable est [`desktop/internal/peats`](desktop/internal/peats) :
 protocole pur (trames, opcodes, encodage de l'égaliseur) et transport
 RFCOMM/SPP, sans dépendance à l'interface.
 
@@ -66,9 +66,9 @@ Des binaires précompilés pour Linux, Windows et Android sont attachés à chaq
 ### Bureau
 
 ```bash
-cd peatsaudio
+cd desktop
 wails build -tags webkit2_41   # Ubuntu 24.04 : webkit2gtk-4.1
-./build/bin/peatsaudio
+./build/bin/openpeats
 ```
 
 Sous Windows et macOS, le tag `webkit2_41` ne s'applique pas : `wails build`
@@ -93,8 +93,8 @@ Ajouter une langue consiste à ajouter des catalogues, jamais à toucher au code
 
 | Où | Ajouter |
 |---|---|
-| Interface de bureau | `peatsaudio/frontend/src/locales/<lang>.json`, puis la déclarer dans `frontend/src/lib/i18n.js` |
-| Notifications de bureau et `peatsctl` | `peatsaudio/internal/i18n/locales/<lang>.json` |
+| Interface de bureau | `desktop/frontend/src/locales/<lang>.json`, puis la déclarer dans `frontend/src/lib/i18n.js` |
+| Notifications de bureau et `peatsctl` | `desktop/internal/i18n/locales/<lang>.json` |
 | Android | `android/app/src/main/res/values-<lang>/strings.xml` |
 
 L'anglais est la langue source partout ; une clé absente retombe sur l'anglais
