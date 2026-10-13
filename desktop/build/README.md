@@ -8,6 +8,27 @@ The structure is:
 * darwin - macOS specific files
 * windows - Windows specific files
 
+## Icon
+
+`appicon.svg` is the source of the OpenPeats icon; the other icon files are
+rendered from it and committed, so a build needs no SVG renderer.
+
+- `appicon.png` — `appicon.svg` at 1024 × 1024. Wails builds the macOS icon
+  from it.
+- `windows/icon.ico` — 16, 20 and 24 px from `appicon-small.svg`, the same
+  drawing redrawn on a 16 px grid so it stays legible; 32 to 256 px from
+  `appicon.svg`. Every entry is PNG-compressed, as Wails' own default was.
+  Wails would regenerate a missing `icon.ico` from `appicon.png` alone, losing
+  the small drawing: replace the file, never delete it.
+- The Linux package installs `appicon.svg` itself, as a scalable icon.
+- The Android adaptive icon
+  (`android/app/src/main/res/drawable/ic_launcher_*.xml`) carries the same
+  paths in the same 1024-unit coordinates; a change to the drawing goes into
+  both.
+
+Render each size from the SVG directly rather than shrinking the 1024 px PNG,
+which blurs the small ones.
+
 ## Mac
 
 The `darwin` directory holds files specific to Mac builds.

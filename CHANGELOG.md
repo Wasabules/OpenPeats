@@ -20,6 +20,10 @@ renames that heading.
   at the top stays for a device the list does not show. On Linux the list
   comes from BlueZ and has not yet been tried with real earbuds.
 - `peatsctl` run without `-addr` lists the same devices.
+- **An icon of its own**: a ring around a sound wave. The desktop window, the
+  program file and the Windows installer used to show Wails' default "W", and
+  the Android launcher a system headset glyph. The Linux package installs it
+  as a scalable icon for the menu entry.
 
 ### Changed
 

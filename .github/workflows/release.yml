@@ -146,8 +146,10 @@ jobs:
           install -Dm755 "$bin/peatsctl"   "$root/usr/bin/peatsctl"
           install -Dm644 packaging/linux/openpeats.desktop \
               "$root/usr/share/applications/openpeats.desktop"
-          install -Dm644 desktop/build/appicon.png \
-              "$root/usr/share/icons/hicolor/512x512/apps/openpeats.png"
+          # The vector source: one file for every size, where the 1024 px
+          # PNG sat in a directory promising 512.
+          install -Dm644 desktop/build/appicon.svg \
+              "$root/usr/share/icons/hicolor/scalable/apps/openpeats.svg"
           install -Dm644 LICENSE "$root/usr/share/doc/openpeats/copyright"
 
           mkdir -p "$root/DEBIAN"

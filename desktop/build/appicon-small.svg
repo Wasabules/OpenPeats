@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- appicon.svg redrawn on a 16 px grid for windows/icon.ico's 16 to 24 px
+       sizes: a heavier ring, three bars instead of five, every edge on a
+       pixel, so the shape still reads where the full drawing turns to mush. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6E9BFF"/>
+      <stop offset="1" stop-color="#4A3FD8"/>
+    </linearGradient>
+  </defs>
+  <rect width="16" height="16" rx="3.5" fill="url(#bg)"/>
+  <circle cx="8" cy="8" r="6" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path fill="#FFFFFF"
+        d="M4,7 a1,1 0 0,1 2,0 v2 a1,1 0 0,1 -2,0 z
+           M7,5 a1,1 0 0,1 2,0 v6 a1,1 0 0,1 -2,0 z
+           M10,7 a1,1 0 0,1 2,0 v2 a1,1 0 0,1 -2,0 z"/>
+</svg>
