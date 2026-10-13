@@ -9,6 +9,14 @@ publishes it as the release body, so every version needs one before it is
 tagged. Changes are recorded under Unreleased as they land; cutting a release
 renames that heading.
 
+## [Unreleased]
+
+### Changed
+
+- Android: built with Android Gradle Plugin 9, Kotlin 2.4 and current Compose
+  libraries. The app still targets Android 15 and runs from Android 8, as
+  before.
+
 ## [0.4.0] - 2026-10-13
 
 The desktop app is now called **OpenPeats**, like the project and the Android

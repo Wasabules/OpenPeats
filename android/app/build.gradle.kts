@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -20,7 +19,10 @@ val keystorePath = findProperty("openpeats.keystore") as String?
 
 android {
     namespace = "com.openpeats"
-    compileSdk = 35
+    // compileSdk follows the libraries (core-ktx 1.19 refuses anything below
+    // 37). targetSdk does not: raising it opts the app into new runtime
+    // behaviour, which needs checking on a device first.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.openpeats"
@@ -56,16 +58,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     buildFeatures {
         compose = true
     }
-
-    sourceSets["main"].java.srcDirs("src/main/kotlin")
-    sourceSets["test"].java.srcDirs("src/test/kotlin")
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -90,10 +86,10 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
@@ -104,9 +100,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     // Android's own org.json is a stub in local unit tests; this is the real one.
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 }
