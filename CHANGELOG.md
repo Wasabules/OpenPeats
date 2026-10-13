@@ -9,7 +9,15 @@ publishes it as the release body, so every version needs one before it is
 tagged. Changes are recorded under Unreleased as they land; cutting a release
 renames that heading.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-13
+
+The desktop app is now called **OpenPeats**, like the project and the Android
+app, so its downloads are the `openpeats` files below. Installing this
+version over 0.3.0 takes care of the old one.
+
+The automatic removal of the old Windows installation was built and compiled
+but has not yet been tried on a machine running 0.3.0; if the PeatsAudio entry
+is still listed afterwards, uninstall it from Installed apps.
 
 ### Added
 
@@ -32,7 +40,7 @@ renames that heading.
 ### Fixed
 
 - Desktop: counts follow the plural rules of the interface language — "1
-  bande", "10 bands" — instead of "band(s)".
+  band", "10 bands" — instead of "band(s)".
 - Desktop: an unexpected error is shown inside a translated sentence rather
   than as bare technical text, and a reconnection attempt failing for such a
   reason no longer logs a literal "{error}".
@@ -161,6 +169,7 @@ First release.
 - CI on Linux and Windows, and a release workflow producing the Linux, Windows
   and Android artefacts plus `SHA256SUMS`.
 
+[0.4.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.1.0
