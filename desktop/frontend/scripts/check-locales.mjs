@@ -40,8 +40,34 @@ function readCatalogue(locale) {
   }
 }
 
-function placeholders(message) {
-  return [...String(message).matchAll(PLACEHOLDER)].map((m) => m[1]).sort();
+// A message is a string, or plural forms keyed by CLDR category (see
+// pluralForm in src/lib/i18n.js). "other" is the form every language has and
+// the one a missing category falls back to, so it is mandatory.
+const PLURAL_CATEGORIES = new Set(["zero", "one", "two", "few", "many", "other"]);
+
+function forms(locale, key, message) {
+  if (typeof message === "string") return [message];
+  if (message && typeof message === "object" && !Array.isArray(message)) {
+    for (const category of Object.keys(message)) {
+      if (!PLURAL_CATEGORIES.has(category)) {
+        fail(`${locale}.json: "${key}" has an unknown plural category "${category}"`);
+      }
+    }
+    if (typeof message.other !== "string") {
+      fail(`${locale}.json: "${key}" has plural forms but no "other"`);
+    }
+    return Object.values(message).map(String);
+  }
+  fail(`${locale}.json: "${key}" is neither a string nor plural forms`);
+  return [];
+}
+
+/** Placeholders a message uses, across all its plural forms. */
+function placeholders(locale, key, message) {
+  const names = forms(locale, key, message).flatMap((form) =>
+    [...form.matchAll(PLACEHOLDER)].map((m) => m[1])
+  );
+  return [...new Set(names)].sort();
 }
 
 /** Every .svelte and .js file under src/, so keys can be traced to their use. */
@@ -89,15 +115,20 @@ for (const locale of locales) {
     }
   }
 
-  if (locale === SOURCE) continue;
+  if (locale === SOURCE) {
+    // The source is checked for shape too: a malformed plural in English
+    // would otherwise pass, being the reference everything is compared to.
+    for (const key of sourceKeys) forms(locale, key, catalogue[key]);
+    continue;
+  }
 
   for (const key of sourceKeys) {
     if (!(key in catalogue)) {
       fail(`${locale}.json: missing key "${key}"`);
       continue;
     }
-    const want = placeholders(source[key]);
-    const got = placeholders(catalogue[key]);
+    const want = placeholders(SOURCE, key, source[key]);
+    const got = placeholders(locale, key, catalogue[key]);
     if (want.join(",") !== got.join(",")) {
       fail(
         `${locale}.json: "${key}" has placeholders [${got}], English has [${want}]`

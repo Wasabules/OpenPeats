@@ -84,7 +84,7 @@
   "error.noChannel": "No RFCOMM channel. Earbuds off, in their case, or not paired.",
   "error.notConnected": "Not connected.",
   "error.payloadTooLong": "Payload too long: a frame carries 255 bytes at most.",
-  "error.raw": "{error}",
+  "error.raw": "Unexpected error: {error}",
   "error.unreachable": "Earbuds unreachable — off, in their case, or out of range. Paired is not enough: the system must have established the link.",
   "error.unsupported": "RFCOMM transport not implemented on this platform.",
 
@@ -117,7 +117,7 @@
   "log.connected": "Connected on RFCOMM channel {channel}.",
   "log.connecting": "Connecting to {mac}…",
   "log.disconnected": "Disconnected.",
-  "log.eqApplied": "EQ applied: {bands} band(s), master gain {gain} dB.",
+  "log.eqApplied": {"one": "EQ applied: {count} band, master gain {gain} dB.", "other": "EQ applied: {count} bands, master gain {gain} dB."},
   "log.eqFailed": "EQ: {error}",
   "log.ldacEnabling": "Enabling LDAC — multipoint will be turned off (they are exclusive).",
   "log.leAudioToggling": "Toggling LE Audio — the earbuds are about to reboot.",

@@ -29,6 +29,14 @@ renames that heading.
   the remembered earbuds address is read from the old settings folder. The
   interface language may need picking again once.
 
+### Fixed
+
+- Desktop: counts follow the plural rules of the interface language — "1
+  bande", "10 bands" — instead of "band(s)".
+- Desktop: an unexpected error is shown inside a translated sentence rather
+  than as bare technical text, and a reconnection attempt failing for such a
+  reason no longer logs a literal "{error}".
+
 ## [0.3.0] - 2026-10-13
 
 The Android app installs at last: earlier releases shipped an unsigned APK,

@@ -111,6 +111,16 @@ func describeConnectError(err error) Message {
 	}
 }
 
+// reasonArg nests a connection error inside another message. A linked key is
+// resolved without arguments, so it only works for a message that has none;
+// a raw error goes in as its own text, which is what it would display anyway.
+func reasonArg(m Message) string {
+	if len(m.Args) == 0 {
+		return ref(m.Key)
+	}
+	return m.Args["error"]
+}
+
 func (a *App) Disconnect() {
 	a.sessionMu.Lock()
 	defer a.sessionMu.Unlock()
@@ -197,7 +207,7 @@ func (a *App) reconnectLoop(mac string, session int) {
 			a.log("log.reconnectAttempt",
 				"attempt", i,
 				"total", reconnectAttempts,
-				"reason", ref(describeConnectError(err).Key))
+				"reason", reasonArg(describeConnectError(err)))
 			continue
 		}
 

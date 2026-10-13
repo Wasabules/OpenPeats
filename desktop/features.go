@@ -280,7 +280,7 @@ func (a *App) ApplyEQ(bands []peats.EQBand, masterGain float64) Message {
 		a.log("log.eqFailed", "error", err.Error())
 		return msg("error.raw", "error", err.Error())
 	}
-	a.log("log.eqApplied", "bands", len(bands), "gain", fmt.Sprintf("%.1f", masterGain))
+	a.log("log.eqApplied", "count", len(bands), "gain", fmt.Sprintf("%.1f", masterGain))
 	return Message{}
 }
 

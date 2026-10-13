@@ -84,7 +84,7 @@
   "error.noChannel": "Aucun canal RFCOMM. Écouteurs éteints, dans l'étui, ou non appairés.",
   "error.notConnected": "Non connecté.",
   "error.payloadTooLong": "Payload trop long : une trame transporte 255 octets au plus.",
-  "error.raw": "{error}",
+  "error.raw": "Erreur inattendue : {error}",
   "error.unreachable": "Écouteurs injoignables — éteints, dans l'étui, ou hors de portée. Appairés ne suffit pas : le système doit avoir établi le lien.",
   "error.unsupported": "Transport RFCOMM non implémenté sur cette plateforme.",
 
@@ -117,7 +117,7 @@
   "log.connected": "Connecté sur le canal RFCOMM {channel}.",
   "log.connecting": "Connexion à {mac}…",
   "log.disconnected": "Déconnecté.",
-  "log.eqApplied": "EQ appliqué : {bands} bande(s), gain maître {gain} dB.",
+  "log.eqApplied": {"one": "EQ appliqué : {count} bande, gain maître {gain} dB.", "other": "EQ appliqué : {count} bandes, gain maître {gain} dB."},
   "log.eqFailed": "EQ : {error}",
   "log.ldacEnabling": "Activation de LDAC — le multipoint sera désactivé (exclusifs).",
   "log.leAudioToggling": "Bascule de LE Audio — les écouteurs vont redémarrer.",

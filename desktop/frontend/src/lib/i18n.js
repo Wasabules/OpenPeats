@@ -15,6 +15,9 @@
  * ../../message.go) that `t` renders here. An argument whose value starts with
  * "@:" is itself a catalogue key — the linked-message convention — which is
  * how a nested reason stays translated inside a sentence Go assembled.
+ *
+ * A message that depends on a number has one form per plural category, picked
+ * by its `count` argument (see pluralForm). "(s)" is not a plural.
  */
 
 import { derived, writable } from "svelte/store";
@@ -95,7 +98,24 @@ function lookup(catalogue, key) {
   return hit !== undefined ? hit : CATALOGUES[FALLBACK_LOCALE][key];
 }
 
-function interpolate(template, args, catalogue) {
+/**
+ * Plural forms. A catalogue value may be an object keyed by CLDR plural
+ * category — "one", "few", "many", "other", as Intl.PluralRules names them —
+ * instead of a string. The `count` argument picks the form, with the rules of
+ * the language being displayed: French puts 0 and 1 in "one", English only 1.
+ * "other" is mandatory, and stands in for any category a translation leaves
+ * out.
+ *
+ *   "log.eqApplied": { "one": "{count} band", "other": "{count} bands" }
+ */
+function pluralForm(template, args, code) {
+  if (template === null || typeof template !== "object") return template;
+  const n = Number(args?.count);
+  const category = Number.isFinite(n) ? new Intl.PluralRules(code).select(n) : "other";
+  return template[category] ?? template.other;
+}
+
+function interpolate(template, args, catalogue, code) {
   if (!args) return template;
   return template.replace(/\{(\w+)\}/g, (whole, name) => {
     const value = args[name];
@@ -104,7 +124,7 @@ function interpolate(template, args, catalogue) {
     // without arguments, so this cannot recurse indefinitely.
     if (typeof value === "string" && value.startsWith("@:")) {
       const nested = lookup(catalogue, value.slice(2));
-      return nested !== undefined ? nested : value.slice(2);
+      return nested !== undefined ? pluralForm(nested, undefined, code) : value.slice(2);
     }
     return String(value);
   });
@@ -123,14 +143,17 @@ function interpolate(template, args, catalogue) {
 export const t = derived(locale, ($locale) => {
   const catalogue = CATALOGUES[$locale] || CATALOGUES[FALLBACK_LOCALE];
 
+  const render = (template, args) =>
+    interpolate(pluralForm(template, args, $locale), args, catalogue, $locale);
+
   return (key, args) => {
     // Message values coming from Go carry their own arguments.
     if (key && typeof key === "object") {
       if (!key.key) return ""; // zero Message: success, nothing to show
-      return interpolate(lookup(catalogue, key.key) ?? key.key, key.args, catalogue);
+      return render(lookup(catalogue, key.key) ?? key.key, key.args);
     }
     if (!key) return "";
     const template = lookup(catalogue, key);
-    return template === undefined ? key : interpolate(template, args, catalogue);
+    return template === undefined ? key : render(template, args);
   };
 });
