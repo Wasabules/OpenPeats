@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -110,14 +111,24 @@ private fun peakingDb(f: Double, b: EqBand): Double {
 private fun fmtFreq(f: Int): String =
     if (f >= 1000) "${f / 1000}k" else "$f"
 
+/**
+ * The curve being edited. It lives outside the panel because the panel leaves
+ * the composition with its tab, and a curve in progress has not reached the
+ * earbuds yet: nothing else could bring it back.
+ */
+class EqEditor {
+    var granularity by mutableIntStateOf(5)
+    var masterGain by mutableDoubleStateOf(0.0)
+    var selected by mutableIntStateOf(0)
+    var bands by mutableStateOf(GRANULARITY[5]!!.map { EqBand(it, 0.0, 1.4) })
+}
+
 @Composable
-fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
-    var granularity by remember { mutableIntStateOf(5) }
-    var masterGain by remember { mutableDoubleStateOf(0.0) }
-    var selected by remember { mutableIntStateOf(0) }
-    var bands by remember {
-        mutableStateOf(GRANULARITY[5]!!.map { EqBand(it, 0.0, 1.4) })
-    }
+fun EqPanel(editor: EqEditor, busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
+    var granularity by editor::granularity
+    var masterGain by editor::masterGain
+    var selected by editor::selected
+    var bands by editor::bands
 
     fun setGranularity(n: Int) {
         val old = bands
@@ -159,7 +170,7 @@ fun EqPanel(busy: Boolean, onApply: (List<EqBand>, Double) -> Unit) {
                     selected = granularity == n,
                     onClick = { setGranularity(n) },
                     enabled = !busy,
-                    label = { Text(stringResource(R.string.eq_bands, n), fontSize = 12.sp) },
+                    label = { Text(pluralStringResource(R.plurals.eq_bands, n, n), fontSize = 12.sp) },
                 )
             }
         }

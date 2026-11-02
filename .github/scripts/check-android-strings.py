@@ -33,13 +33,21 @@ SPECIFIER = re.compile(r"%(?:\d+\$)?[-#+ 0,(]*\d*(?:\.\d+)?[a-zA-Z%]")
 
 
 def load(path):
-    """Map every string name to its text, for one resource file."""
+    """Map every string name to its text, for one resource file.
+
+    A plural takes its specifiers from its "other" form, the one every language
+    has. How many forms it has differs by language, so only that one compares.
+    """
     root = ET.parse(path).getroot()
-    return {
+    strings = {
         el.get("name"): "".join(el.itertext())
         for el in root.findall("string")
         if el.get("name")
     }
+    for el in root.findall("plurals"):
+        forms = {i.get("quantity"): "".join(i.itertext()) for i in el.findall("item")}
+        strings[el.get("name")] = forms.get("other", "")
+    return strings
 
 
 def specifiers(text):

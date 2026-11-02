@@ -15,7 +15,7 @@
     <string name="bluetooth_off">Bluetooth is off. Turn it on, then come back here.</string>
     <string name="paired_earbuds">Paired earbuds</string>
     <string name="no_paired_devices">No paired audio device. Pair your earbuds in the Bluetooth settings, then come back here.</string>
-    <string name="reconnecting">The earbuds are restarting — reconnecting…</string>
+    <string name="reconnecting">Reconnecting to the earbuds…</string>
     <string name="action_stop">Stop</string>
     <string name="multipoint_hint">If multipoint is on and another device holds the control channel, connecting will fail: turn Bluetooth off there.</string>
     <string name="connecting">Connecting…</string>
@@ -25,7 +25,7 @@
     <!-- Errors -->
     <string name="error_bluetooth_unavailable">Bluetooth unavailable.</string>
     <string name="error_channel_busy">Control channel busy. If multipoint is on, another device is holding it — turn Bluetooth off there and try again.</string>
-    <string name="error_refused">The earbuds refused the connection. Take them out of their case and try again.</string>
+    <string name="error_refused">The earbuds did not answer. Take them out of their case.</string>
     <string name="error_generic">Cannot connect: %1$s</string>
 
     <!-- Device header -->
@@ -77,7 +77,6 @@
     <string name="eq_preset_treble">Treble +</string>
     <string name="eq_preset_loudness">Loudness</string>
     <string name="eq_granularity">Granularity</string>
-    <string name="eq_bands">%1$d bands</string>
     <string name="eq_band_detail">Band %1$d — %2$s Hz</string>
     <string name="eq_gain_db">%1$+.1f dB</string>
     <string name="eq_bandwidth">Bandwidth  Q %1$.1f</string>
@@ -114,10 +113,118 @@
     <!-- Attempt number, total attempts, reason. -->
     <string name="log_reconnect_attempt">Reconnect %1$d/%2$d: %3$s</string>
     <string name="log_reconnected">Reconnected.</string>
-    <string name="log_reconnect_gave_up">Reconnection failed after %1$d attempts. Start it again by hand.</string>
     <string name="log_failed">Failed: %1$s</string>
-    <string name="log_refreshed">Refreshed. %1$d feature(s) absent from this model.</string>
     <string name="log_multipoint_enabling">Enabling multipoint — the firmware will turn LDAC off.</string>
     <string name="log_ldac_enabling">Enabling LDAC — multipoint will be turned off (they are exclusive).</string>
-    <string name="log_eq_applied">EQ applied: %1$d band(s).</string>
+
+    <!-- Counts: the form follows the plural rules of each language. -->
+    <plurals name="eq_bands">
+        <item quantity="one">%1$d band</item>
+        <item quantity="other">%1$d bands</item>
+    </plurals>
+    <plurals name="log_reconnect_gave_up">
+        <item quantity="one">Reconnection failed after %1$d attempt. Waiting for the earbuds.</item>
+        <item quantity="other">Reconnection failed after %1$d attempts. Waiting for the earbuds.</item>
+    </plurals>
+    <plurals name="log_refreshed">
+        <item quantity="one">Refreshed. %1$d feature absent from this model.</item>
+        <item quantity="other">Refreshed. %1$d features absent from this model.</item>
+    </plurals>
+    <plurals name="log_eq_applied">
+        <item quantity="one">EQ applied: %1$d band.</item>
+        <item quantity="other">EQ applied: %1$d bands.</item>
+    </plurals>
+
+    <!-- Link status, on the widgets, the tile and the notification -->
+    <string name="status_connected">Connected</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_waiting">Waiting for the earbuds. They connect once out of their case.</string>
+    <string name="status_waiting_short">Waiting for the earbuds</string>
+    <string name="status_no_earbuds">Open the app to pick your earbuds</string>
+    <!-- The time the values shown were read. -->
+    <string name="status_last_read">Read at %1$s</string>
+
+    <!-- Notifications -->
+    <string name="channel_link">Connection to the earbuds</string>
+    <string name="channel_alerts">Alerts</string>
+    <!-- Source, then its level. -->
+    <string name="notification_low_battery">%1$s low: %2$d%%</string>
+    <!-- Marks the mode currently on, among the notification's buttons. -->
+    <string name="notification_action_active">● %1$s</string>
+    <string name="notification_left">L %1$d%%</string>
+    <string name="notification_right">R %1$d%%</string>
+    <string name="notification_case">Case %1$d%%</string>
+
+    <!-- Quick settings tile -->
+    <string name="tile_label">Noise cancelling</string>
+
+    <!-- Launcher shortcuts -->
+    <string name="shortcut_off">Noise cancelling off</string>
+    <string name="shortcut_anc">Noise cancelling on</string>
+    <string name="shortcut_transparency">Transparency</string>
+
+    <!-- Home screen widgets -->
+    <string name="anc_transparency_short">Transp.</string>
+    <string name="widget_touch_lock">Touch lock</string>
+    <string name="widget_unsupported">Not available on these earbuds</string>
+    <string name="widget_levels_inactive">Turn noise cancelling or transparency on</string>
+    <string name="widget_modes_name">Noise modes</string>
+    <string name="widget_modes_desc">Off, noise cancelling and transparency, one tap each</string>
+    <string name="widget_switch_name">Quick switch</string>
+    <string name="widget_switch_desc">One button going through the noise modes</string>
+    <string name="widget_battery_name">Batteries</string>
+    <string name="widget_battery_desc">Left, right and case, with gauges when resized</string>
+    <string name="widget_battery_mini_name">Battery</string>
+    <string name="widget_battery_mini_desc">The earbud closest to empty</string>
+    <string name="widget_dashboard_name">Dashboard</string>
+    <string name="widget_dashboard_desc">Batteries and modes; resize it for the sub-modes too</string>
+    <string name="widget_levels_name">Sub-modes</string>
+    <string name="widget_levels_desc">The sub-modes of the noise mode that is on</string>
+    <string name="widget_toggles_name">Game mode and touch lock</string>
+    <string name="widget_toggles_desc">Two switches for the settings you flip often</string>
+    <!-- Sample values, shown in the widget picker only. -->
+    <string name="preview_level_high">80%</string>
+    <string name="preview_level_low">65%</string>
+
+    <!-- Using the earbuds from outside the app -->
+    <string name="section_integration">Widgets and background</string>
+    <string name="integration_widgets_hint">Long-press the home screen for the widgets, or the app icon for shortcuts.</string>
+    <string name="action_add_tile">Add the quick settings tile</string>
+    <string name="integration_companion_hint">Automatic detection lets Android watch for these earbuds: the app restarts by itself when they appear, even after being killed, and the notification goes away while they are not around.</string>
+    <string name="action_companion_on">Turn on automatic detection</string>
+    <string name="action_companion_off">Turn off automatic detection</string>
+    <!-- The reason Android gives. -->
+    <string name="integration_companion_failed">Android refused: %1$s. Location must be on for this step.</string>
+    <string name="integration_battery_hint">If the connection stops on its own, allow unrestricted battery use for OpenPeats.</string>
+    <string name="action_battery_settings">Open battery settings</string>
+
+    <!-- Language -->
+    <string name="section_language">Language</string>
+    <string name="language_system">System language</string>
+    <string name="integration_sd_card_hint">OpenPeats is installed on the SD card, where Android does not list its widgets. Move it to internal storage in the app\'s storage settings.</string>
+
+    <!-- Tabs -->
+    <string name="tab_earbuds">Earbuds</string>
+    <string name="tab_sound">Sound</string>
+    <string name="tab_settings">Settings</string>
+    <string name="tab_app">App</string>
+    <string name="tab_needs_link">Connect your earbuds to use this.</string>
+    <string name="section_device">These earbuds</string>
+    <!-- The app's version. -->
+    <string name="about_version">OpenPeats %1$s</string>
+
+    <!-- How long the link lasts -->
+    <string name="section_connection">Connection</string>
+    <string name="connection_permanent">Permanent</string>
+    <string name="connection_on_demand">On demand</string>
+    <string name="connection_permanent_hint">Stays up in the background until you tap Close, and comes back by itself when the earbuds do. Controls respond at once and batteries stay current, but another device cannot use the control channel meanwhile.</string>
+    <string name="connection_on_demand_hint">Connects when you use a control or pick the earbuds, and closes 2 minutes after the last use once the app is off screen. The first tap is slower, batteries show the last reading, and the channel stays free for other devices.</string>
+    <string name="log_idle_closed">Connection closed: not used for a while.</string>
+
+    <!-- Notifications -->
+    <string name="section_notifications">Notifications</string>
+    <string name="toggle_battery_alerts">Low battery alerts</string>
+    <string name="notifications_hint">Android requires a notification while the connection runs in the background. You can hide it in the system settings: the connection keeps working.</string>
+    <string name="action_notification_settings">Open notification settings</string>
 </resources>

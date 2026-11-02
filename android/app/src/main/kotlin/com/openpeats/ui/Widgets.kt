@@ -63,6 +63,8 @@ internal fun Battery(label: String, pct: Int) {
         LinearProgressIndicator(
             progress = { pct / 100f },
             modifier = Modifier.width(74.dp),
+            gapSize = 0.dp,
+            drawStopIndicator = { },
             color = when {
                 pct <= 20 -> Color(0xFFE05E5E)
                 pct <= 35 -> Color(0xFFE0A33E)

@@ -63,6 +63,12 @@ android {
         compose = true
     }
 
+    // Lists the languages in the system's per-app language setting, from the
+    // values-* directories: a new translation needs no edit here.
+    androidResources {
+        generateLocaleConfig = true
+    }
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
@@ -99,6 +105,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
+    // Home screen widgets.
+    implementation("androidx.glance:glance-appwidget:1.2.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 

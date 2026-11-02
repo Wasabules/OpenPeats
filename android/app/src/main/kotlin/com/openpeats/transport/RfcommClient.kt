@@ -24,9 +24,32 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.UUID
 
 private const val TAG = "OpenPeats"
+
+/** The byte streams of an open control channel. A test puts fake earbuds here. */
+interface ControlLink {
+    val input: InputStream
+    val output: OutputStream
+
+    /** Closes the channel, which also ends a read blocked on [input]. */
+    fun close()
+}
+
+private class SocketLink(private val socket: BluetoothSocket) : ControlLink {
+    override val input: InputStream get() = socket.inputStream
+    override val output: OutputStream get() = socket.outputStream
+
+    override fun close() {
+        try {
+            socket.close()
+        } catch (_: IOException) {
+        }
+    }
+}
 
 /**
  * Control client over RFCOMM/SPP.
@@ -36,8 +59,9 @@ private const val TAG = "OpenPeats"
  * needs.
  */
 class RfcommClient private constructor(
-    private val socket: BluetoothSocket,
+    private val link: ControlLink,
     private val onLinkLost: (RfcommClient) -> Unit,
+    private val timeoutMs: Long,
 ) {
     companion object {
         /** A command sent too soon after the link comes up gets no reply. */
@@ -64,6 +88,21 @@ class RfcommClient private constructor(
         suspend fun connect(
             device: BluetoothDevice,
             onLinkLost: (RfcommClient) -> Unit,
+        ): RfcommClient = open(onLinkLost, SETTLE_MS, TIMEOUT_MS) { SocketLink(openSocket(device)) }
+
+        /** Runs the exchanges over [link], with the delays a test can afford. */
+        internal suspend fun over(
+            link: ControlLink,
+            onLinkLost: (RfcommClient) -> Unit,
+            settleMs: Long,
+            timeoutMs: Long,
+        ): RfcommClient = open(onLinkLost, settleMs, timeoutMs) { link }
+
+        private suspend fun open(
+            onLinkLost: (RfcommClient) -> Unit,
+            settleMs: Long,
+            timeoutMs: Long,
+            makeLink: () -> ControlLink,
         ): RfcommClient {
             // Set from the IO thread once the client exists, so a cancellation
             // landing as withContext returns can still release it: the result
@@ -71,11 +110,11 @@ class RfcommClient private constructor(
             var created: RfcommClient? = null
             try {
                 return withContext(Dispatchers.IO) {
-                    val c = RfcommClient(openSocket(device), onLinkLost)
+                    val c = RfcommClient(makeLink(), onLinkLost, timeoutMs)
                     created = c
                     try {
                         c.startReader()
-                        delay(SETTLE_MS)
+                        delay(settleMs)
                     } catch (e: Throwable) {
                         c.close()
                         throw e
@@ -166,7 +205,7 @@ class RfcommClient private constructor(
             try {
                 while (isActive && !closed) {
                     val n = try {
-                        socket.inputStream.read(buf)
+                        link.input.read(buf)
                     } catch (e: IOException) {
                         if (!closed) Log.w(TAG, "read interrupted", e)
                         break
@@ -209,7 +248,7 @@ class RfcommClient private constructor(
      * and receiving from it would throw into the caller's scope.
      */
     private suspend fun await(match: (Frame) -> Boolean): Frame? =
-        withTimeoutOrNull(TIMEOUT_MS) {
+        withTimeoutOrNull(timeoutMs) {
             while (true) {
                 val f = frames.receiveCatching().getOrNull() ?: return@withTimeoutOrNull null
                 if (match(f)) return@withTimeoutOrNull f
@@ -219,8 +258,8 @@ class RfcommClient private constructor(
         }
 
     private suspend fun write(b: ByteArray) = withContext(Dispatchers.IO) {
-        socket.outputStream.write(b)
-        socket.outputStream.flush()
+        link.output.write(b)
+        link.output.flush()
     }
 
     /**
@@ -299,10 +338,7 @@ class RfcommClient private constructor(
         if (closed) return
         closed = true
         scope.cancel()
-        try {
-            socket.close()
-        } catch (_: IOException) {
-        }
+        link.close()
         frames.close()
     }
 }

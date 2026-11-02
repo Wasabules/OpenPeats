@@ -40,6 +40,8 @@ transport, with no dependency on the interface.
 - Game mode, LE Audio, touch lockout, voice prompts
 - Reading of the touch control mapping
 - Raw frame console for exploration
+- On Android: seven home screen widgets, a quick settings tile and app icon
+  shortcuts, with a connection kept up in the background or opened on demand
 
 The application queries every feature it has a control for and dims what does
 not answer, so it adapts to models exposing a different subset.
@@ -81,7 +83,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 The interface is **English first** and translated at runtime; French ships in
 the box. The desktop app picks the language up from the system and lets you
 override it in the top bar, remembering the choice. Android follows the system
-language through standard resource qualifiers.
+language through standard resource qualifiers; from Android 13 the app also
+offers a picker, which applies to its widgets and notifications too, and shows
+in the system's per-app language setting.
 
 Adding a language means adding catalogues, never touching application code:
 

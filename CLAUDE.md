@@ -16,7 +16,7 @@ catalogues, with English as the source language and French shipped alongside:
 |---|---|
 | Desktop UI | `desktop/frontend/src/locales/*.json` |
 | Desktop notifications, `peatsctl` | `desktop/internal/i18n/locales/*.json` |
-| Android | `android/app/src/main/res/values*/strings.xml` |
+| Android | `android/app/src/main/res/values*/strings.xml` — the app's language list is generated from these |
 
 Adding a language must never require touching application code. English is the
 fallback for any key a translation misses. Tests enforce catalogue parity —
@@ -60,6 +60,9 @@ are tested against a fake transport in `client_test.go`.
 cd desktop/frontend && npm run check     # svelte-check against the bindings
 cd android && ./gradlew :app:testDebugUnitTest
 ```
+
+`EarbudsSessionTest` runs the session's rules through the real client against
+`FakeEarbuds`: what goes out on the wire, never retried writes above all.
 
 `frontend/dist/.gitkeep` is tracked on purpose: `main.go` does
 `//go:embed all:frontend/dist`, and Wails loads that package to generate its
@@ -166,6 +169,46 @@ implementing `rfcommConn` + `isTimeout`; nothing else moves.
 nothing is connected: Windows reads the system's paired list from
 `bthprops.cpl`, Linux asks BlueZ over the system D-Bus. Where no file fills it
 in, the list reports `ErrUnsupported` and the address field remains the way in.
+
+### Layers (Android)
+
+```
+protocol/Protocol.kt       frames, opcodes, EQ encoding — pure, no I/O
+transport/RfcommClient.kt  exchanges and retry over a ControlLink; a test supplies fake earbuds
+session/EarbudsSession.kt  the one link of the process: keeps it up, runs commands, polls
+session/AndroidEarbuds.kt  what the session needs from Android: resources, adapter, preferences
+service/EarbudsService.kt  foreground service keeping the process alive, its notification
+service/AncTileService.kt  quick settings tile
+service/EarbudsEventsReceiver.kt  audio link up or down, boot, app update
+appwidget/EarbudsWidgets.kt  the home screen widgets (Glance)
+companion/CompanionLink.kt optional: the system watches for the earbuds
+ui/, DeviceViewModel.kt    the screens, a window on the session
+```
+
+The link does not belong to a screen. Everything goes through the session,
+whatever opened the process: a widget reaches it by starting the service, the one
+thing a tap may do from a cold process. `OpenPeatsApp.keepService` decides whether
+the service should run. The session holds the link until the user taps Close, or
+with `keepConnected` off until 2 minutes after the last use.
+
+Traps found on a real phone, which a unit test will not show:
+
+- **A foreground service must call `startForeground` within 5 seconds of being
+  started, or the app crashes**, and from Android 14 the `connectedDevice` type
+  throws without the Bluetooth permission. A widget drawn before the permission
+  was revoked still starts it, which is why `promote()` falls back to the short
+  service type.
+- **The system refuses a foreground service start from the background** unless a
+  user action or an exemption is behind it. `tryStart` returning false is normal.
+  The documentation lists widgets and notifications, not tiles, so the tile opens
+  the app when refused.
+- **Android lists no widget from an app on an adopted SD card**, with nothing in
+  the log. `installLocation="internalOnly"` covers the common case; the developer
+  option forcing apps onto external storage overrides it, and an update stays on
+  the volume it was on. `adb install` lands there too on such a phone: use
+  `adb shell pm move-package com.openpeats internal` to test widgets.
+- **The ANC mode shown can be behind a gesture on the earbuds**, so a tap on the
+  mode already shown reads before deciding not to write.
 
 ### The i18n boundary between Go and the frontend
 
