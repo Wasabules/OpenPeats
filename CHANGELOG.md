@@ -9,6 +9,53 @@ publishes it as the release body, so every version needs one before it is
 tagged. Changes are recorded under Unreleased as they land; cutting a release
 renames that heading.
 
+## [Unreleased]
+
+### Added
+
+- **Android: home screen widgets.** Seven of them, all resizable and in the
+  wallpaper's colours: the noise modes one tap each, a one-button quick switch,
+  batteries with gauges, a one-cell battery, a dashboard, the sub-modes of the
+  mode that is on, and game mode with the touch lock. Features the earbuds lack
+  are left out. With the earbuds away they show the last values read and when.
+- **Android: two ways of staying connected**, to choose in the App tab.
+  *Permanent*, the default, stays up in the background until you tap Close, with
+  a notification carrying the batteries and the three noise modes. When the
+  earbuds go away it waits for them, using no radio, and reconnects by itself once
+  they are out of their case; after a restart of the phone or an update of the app
+  too. Another device cannot use the control channel meanwhile. *On demand*
+  connects when a control is used and closes 2 minutes after the last use, leaving
+  the channel free. Either way, a control used with no link connects first, then
+  applies.
+- **Android: a quick settings tile** going through the noise modes, and
+  **shortcuts** on the app icon.
+- Android: an alert when a battery runs low, like the desktop app, which can be
+  turned off. The connection notification is required by Android while the link
+  runs in the background; the app points to the system setting that hides it.
+- Android: optional automatic detection, on Android 13 and later: the system
+  restarts the app when the earbuds appear, and the notification goes away while
+  they are not around.
+- Android: a language picker in the app on Android 13 and later, next to
+  following the system, which remains the default. Older versions follow the
+  system.
+
+### Changed
+
+- **Android: the interface is organised in tabs**, one short page per subject:
+  Earbuds for the batteries and noise modes, Sound for the equaliser, Settings for
+  the codec and voice prompts, App for the rest. It used to be one long page.
+- Android: the app follows the system's light or dark mode, and from Android 12
+  takes its colours from the wallpaper. It remembers the last earbuds and lists
+  them first.
+- Android: the app installs on internal storage only. Android lists no widgets
+  from an app on an adopted SD card; if yours is there already, or a developer
+  option forces it there, the app says so and how to move it.
+
+### Fixed
+
+- Android: counts follow the plural rules of the language — "1 band", "10
+  bands" — instead of "band(s)".
+
 ## [0.5.0] - 2026-10-13
 
 The desktop app no longer needs the earbuds' Bluetooth address typed in: with

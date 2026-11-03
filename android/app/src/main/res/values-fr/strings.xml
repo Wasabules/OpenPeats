@@ -9,7 +9,7 @@
     <string name="bluetooth_off">Le Bluetooth est coupé. Activez-le, puis revenez ici.</string>
     <string name="paired_earbuds">Écouteurs appairés</string>
     <string name="no_paired_devices">Aucun appareil audio appairé. Appairez vos écouteurs dans les réglages Bluetooth, puis revenez ici.</string>
-    <string name="reconnecting">Les écouteurs redémarrent — reconnexion…</string>
+    <string name="reconnecting">Reconnexion aux écouteurs…</string>
     <string name="action_stop">Arrêter</string>
     <string name="multipoint_hint">Si le multipoint est actif et qu\'un autre appareil tient le canal de contrôle, la connexion échouera : coupez-y le Bluetooth.</string>
     <string name="connecting">Connexion…</string>
@@ -18,7 +18,7 @@
     <!-- Erreurs -->
     <string name="error_bluetooth_unavailable">Bluetooth indisponible.</string>
     <string name="error_channel_busy">Canal de contrôle occupé. Si le multipoint est actif, un autre appareil le monopolise — coupez-y le Bluetooth puis réessayez.</string>
-    <string name="error_refused">Les écouteurs ont refusé la connexion. Sortez-les de l\'étui et réessayez.</string>
+    <string name="error_refused">Les écouteurs n\'ont pas répondu. Sortez-les de leur étui.</string>
     <string name="error_generic">Connexion impossible : %1$s</string>
 
     <!-- En-tête de l'appareil -->
@@ -70,7 +70,6 @@
     <string name="eq_preset_treble">Aigus +</string>
     <string name="eq_preset_loudness">Loudness</string>
     <string name="eq_granularity">Finesse</string>
-    <string name="eq_bands">%1$d bandes</string>
     <string name="eq_band_detail">Bande %1$d — %2$s Hz</string>
     <string name="eq_gain_db">%1$+.1f dB</string>
     <string name="eq_bandwidth">Largeur de bande  Q %1$.1f</string>
@@ -106,10 +105,116 @@
     <string name="log_link_lost_reconnecting">Lien perdu — les écouteurs ont redémarré. Reconnexion en cours…</string>
     <string name="log_reconnect_attempt">Reconnexion %1$d/%2$d : %3$s</string>
     <string name="log_reconnected">Reconnecté.</string>
-    <string name="log_reconnect_gave_up">Reconnexion impossible après %1$d essais. Relancez-la à la main.</string>
     <string name="log_failed">Échec : %1$s</string>
-    <string name="log_refreshed">Rafraîchi. %1$d fonction(s) absente(s) de ce modèle.</string>
     <string name="log_multipoint_enabling">Activation du multipoint — LDAC va être désactivé par le firmware.</string>
     <string name="log_ldac_enabling">Activation de LDAC — le multipoint sera désactivé (exclusifs).</string>
-    <string name="log_eq_applied">EQ appliqué : %1$d bande(s).</string>
+
+    <!-- Nombres : la forme suit les règles de pluriel de chaque langue. -->
+    <plurals name="eq_bands">
+        <item quantity="one">%1$d bande</item>
+        <item quantity="many">%1$d bandes</item>
+        <item quantity="other">%1$d bandes</item>
+    </plurals>
+    <plurals name="log_reconnect_gave_up">
+        <item quantity="one">Reconnexion impossible après %1$d essai. En attente des écouteurs.</item>
+        <item quantity="many">Reconnexion impossible après %1$d essais. En attente des écouteurs.</item>
+        <item quantity="other">Reconnexion impossible après %1$d essais. En attente des écouteurs.</item>
+    </plurals>
+    <plurals name="log_refreshed">
+        <item quantity="one">Rafraîchi. %1$d fonction absente de ce modèle.</item>
+        <item quantity="many">Rafraîchi. %1$d fonctions absentes de ce modèle.</item>
+        <item quantity="other">Rafraîchi. %1$d fonctions absentes de ce modèle.</item>
+    </plurals>
+    <plurals name="log_eq_applied">
+        <item quantity="one">EQ appliqué : %1$d bande.</item>
+        <item quantity="many">EQ appliqué : %1$d bandes.</item>
+        <item quantity="other">EQ appliqué : %1$d bandes.</item>
+    </plurals>
+
+    <!-- État du lien, sur les widgets, la tuile et la notification -->
+    <string name="status_connected">Connecté</string>
+    <string name="status_connecting">Connexion…</string>
+    <string name="status_disconnected">Déconnecté</string>
+    <string name="status_waiting">En attente des écouteurs. Ils se connectent dès la sortie de l\'étui.</string>
+    <string name="status_waiting_short">En attente des écouteurs</string>
+    <string name="status_no_earbuds">Ouvrez l\'application pour choisir vos écouteurs</string>
+    <string name="status_last_read">Lu à %1$s</string>
+
+    <!-- Notifications -->
+    <string name="channel_link">Connexion aux écouteurs</string>
+    <string name="channel_alerts">Alertes</string>
+    <string name="notification_low_battery">%1$s faible : %2$d %%</string>
+    <string name="notification_action_active">● %1$s</string>
+    <string name="notification_left">G %1$d %%</string>
+    <string name="notification_right">D %1$d %%</string>
+    <string name="notification_case">Étui %1$d %%</string>
+
+    <!-- Tuile des réglages rapides -->
+    <string name="tile_label">Réduction de bruit</string>
+
+    <!-- Raccourcis de l\'icône -->
+    <string name="shortcut_off">Couper la réduction de bruit</string>
+    <string name="shortcut_anc">Activer la réduction de bruit</string>
+    <string name="shortcut_transparency">Transparence</string>
+
+    <!-- Widgets de l\'écran d\'accueil -->
+    <string name="anc_transparency_short">Transp.</string>
+    <string name="widget_touch_lock">Verrou tactile</string>
+    <string name="widget_unsupported">Indisponible sur ces écouteurs</string>
+    <string name="widget_levels_inactive">Activez la réduction de bruit ou la transparence</string>
+    <string name="widget_modes_name">Modes de bruit</string>
+    <string name="widget_modes_desc">Arrêt, réduction de bruit et transparence, en un appui</string>
+    <string name="widget_switch_name">Bascule rapide</string>
+    <string name="widget_switch_desc">Un bouton qui passe d\'un mode de bruit à l\'autre</string>
+    <string name="widget_battery_name">Batteries</string>
+    <string name="widget_battery_desc">Gauche, droite et étui, avec des jauges si vous l\'agrandissez</string>
+    <string name="widget_battery_mini_name">Batterie</string>
+    <string name="widget_battery_mini_desc">L\'écouteur le plus déchargé</string>
+    <string name="widget_dashboard_name">Tableau de bord</string>
+    <string name="widget_dashboard_desc">Batteries et modes ; agrandissez-le pour les sous-modes</string>
+    <string name="widget_levels_name">Sous-modes</string>
+    <string name="widget_levels_desc">Les sous-modes du mode de bruit actif</string>
+    <string name="widget_toggles_name">Mode jeu et verrou tactile</string>
+    <string name="widget_toggles_desc">Deux interrupteurs pour les réglages souvent changés</string>
+    <string name="preview_level_high">80 %</string>
+    <string name="preview_level_low">65 %</string>
+
+    <!-- Utiliser les écouteurs hors de l\'application -->
+    <string name="section_integration">Widgets et arrière-plan</string>
+    <string name="integration_widgets_hint">Appuyez longuement sur l\'écran d\'accueil pour les widgets, ou sur l\'icône de l\'application pour les raccourcis.</string>
+    <string name="action_add_tile">Ajouter la tuile des réglages rapides</string>
+    <string name="integration_companion_hint">La détection automatique laisse Android surveiller ces écouteurs : l\'application redémarre seule quand ils apparaissent, même si elle a été arrêtée, et la notification disparaît tant qu\'ils sont absents.</string>
+    <string name="action_companion_on">Activer la détection automatique</string>
+    <string name="action_companion_off">Désactiver la détection automatique</string>
+    <string name="integration_companion_failed">Android a refusé : %1$s. La localisation doit être activée pour cette étape.</string>
+    <string name="integration_battery_hint">Si la connexion s\'arrête toute seule, autorisez OpenPeats à utiliser la batterie sans restriction.</string>
+    <string name="action_battery_settings">Ouvrir les réglages de batterie</string>
+
+    <!-- Langue -->
+    <string name="section_language">Langue</string>
+    <string name="language_system">Langue du système</string>
+    <string name="integration_sd_card_hint">OpenPeats est installée sur la carte SD, où Android ne propose pas ses widgets. Déplacez-la vers le stockage interne dans les réglages de stockage de l\'application.</string>
+
+    <!-- Onglets -->
+    <string name="tab_earbuds">Écouteurs</string>
+    <string name="tab_sound">Son</string>
+    <string name="tab_settings">Réglages</string>
+    <string name="tab_app">Application</string>
+    <string name="tab_needs_link">Connectez vos écouteurs pour utiliser cette partie.</string>
+    <string name="section_device">Ces écouteurs</string>
+    <string name="about_version">OpenPeats %1$s</string>
+
+    <!-- Durée du lien -->
+    <string name="section_connection">Connexion</string>
+    <string name="connection_permanent">Permanente</string>
+    <string name="connection_on_demand">À la demande</string>
+    <string name="connection_permanent_hint">Reste active en arrière-plan jusqu\'à ce que vous touchiez Fermer, et revient seule avec les écouteurs. Les commandes répondent aussitôt et les batteries restent à jour, mais un autre appareil ne peut pas utiliser le canal de contrôle pendant ce temps.</string>
+    <string name="connection_on_demand_hint">Se connecte quand vous utilisez une commande ou choisissez les écouteurs, et se ferme 2 minutes après la dernière utilisation, une fois l\'application quittée. Le premier appui est plus lent, les batteries montrent la dernière lecture, et le canal reste libre pour les autres appareils.</string>
+    <string name="log_idle_closed">Connexion fermée : inutilisée depuis un moment.</string>
+
+    <!-- Notifications -->
+    <string name="section_notifications">Notifications</string>
+    <string name="toggle_battery_alerts">Alertes de batterie faible</string>
+    <string name="notifications_hint">Android impose une notification tant que la connexion tourne en arrière-plan. Vous pouvez la masquer dans les réglages du système : la connexion continue de fonctionner.</string>
+    <string name="action_notification_settings">Ouvrir les réglages de notification</string>
 </resources>

@@ -45,6 +45,9 @@ RFCOMM/SPP, sans dépendance à l'interface.
 - Mode jeu, LE Audio, désactivation du tactile, invites vocales
 - Lecture du mapping des commandes tactiles
 - Console de trames brutes pour l'exploration
+- Sur Android : sept widgets d'écran d'accueil, une tuile de réglages rapides et
+  des raccourcis sur l'icône, avec une connexion gardée en arrière-plan ou ouverte
+  à la demande
 
 L'application interroge chaque fonction qu'elle sait piloter et grise ce qui ne
 répond pas : elle s'adapte donc aux modèles qui exposent un sous-ensemble
@@ -86,7 +89,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 L'interface est **en anglais d'abord**, traduite à l'exécution ; le français
 est fourni d'origine. L'application de bureau reprend la langue du système et
-laisse la changer dans la barre du haut, en mémorisant le choix. Android suit
+laisse la changer dans la barre du haut, en mémorisant le choix. À partir
+d'Android 13, l'application Android propose aussi un sélecteur, valable pour ses
+widgets et ses notifications et visible dans le réglage de langue par application
+du système. Sinon, Android suit
 la langue du système par les qualificatifs de ressources standards.
 
 Ajouter une langue consiste à ajouter des catalogues, jamais à toucher au code :

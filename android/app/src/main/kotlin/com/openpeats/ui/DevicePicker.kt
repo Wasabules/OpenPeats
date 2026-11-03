@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import com.openpeats.DeviceState
+import com.openpeats.session.DeviceState
 import com.openpeats.DeviceViewModel
 import com.openpeats.R
 
@@ -75,13 +75,17 @@ fun DevicePicker(vm: DeviceViewModel, s: DeviceState) {
 
             // Picking a device by hand stays possible: it supersedes the
             // automatic reconnection.
-            if (s.reconnecting) {
+            if (s.reconnecting || s.waiting) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(stringResource(R.string.reconnecting), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(
+                        stringResource(if (s.waiting) R.string.status_waiting else R.string.reconnecting),
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f),
+                    )
                     TextButton(onClick = { vm.disconnect() }) {
                         Text(stringResource(R.string.action_stop))
                     }

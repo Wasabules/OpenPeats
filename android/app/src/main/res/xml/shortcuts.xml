@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/shortcut_anc"
+        android:shortcutId="anc"
+        android:shortcutShortLabel="@string/shortcut_anc">
+        <intent
+            android:action="com.openpeats.action.MODE_ANC"
+            android:targetClass="com.openpeats.ShortcutActivity"
+            android:targetPackage="com.openpeats" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/shortcut_transparency"
+        android:shortcutId="transparency"
+        android:shortcutShortLabel="@string/shortcut_transparency">
+        <intent
+            android:action="com.openpeats.action.MODE_TRANSPARENCY"
+            android:targetClass="com.openpeats.ShortcutActivity"
+            android:targetPackage="com.openpeats" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/shortcut_off"
+        android:shortcutId="off"
+        android:shortcutShortLabel="@string/shortcut_off">
+        <intent
+            android:action="com.openpeats.action.MODE_OFF"
+            android:targetClass="com.openpeats.ShortcutActivity"
+            android:targetPackage="com.openpeats" />
+    </shortcut>
+</shortcuts>
