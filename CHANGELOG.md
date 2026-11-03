@@ -9,7 +9,15 @@ publishes it as the release body, so every version needs one before it is
 tagged. Changes are recorded under Unreleased as they land; cutting a release
 renames that heading.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-03
+
+The Android app can now be used without opening it: widgets on the home screen,
+a quick settings tile and shortcuts on its icon switch the noise modes, as asked
+in #13. The connection behind them stays up in the background, or only while it
+is in use if you prefer. The app itself is reorganised in tabs.
+
+Tried on a phone running Android 16. Earlier Android versions and the automatic
+detection have not been checked yet; reports are welcome.
 
 ### Added
 
@@ -252,6 +260,7 @@ First release.
 - CI on Linux and Windows, and a release workflow producing the Linux, Windows
   and Android artefacts plus `SHA256SUMS`.
 
+[0.6.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.3.0
