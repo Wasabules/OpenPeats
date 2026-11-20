@@ -18,10 +18,18 @@ catalogues, with English as the source language and French shipped alongside:
 | Desktop notifications, `peatsctl` | `desktop/internal/i18n/locales/*.json` |
 | Android | `android/app/src/main/res/values*/strings.xml` — the app's language list is generated from these |
 
-Adding a language must never require touching application code. English is the
-fallback for any key a translation misses. Tests enforce catalogue parity —
-missing keys, extra keys, mismatched `{placeholders}` — so a drifting
-translation fails CI rather than shipping a raw key.
+Adding a language takes one registration at most: the desktop UI imports its
+catalogues by hand in `frontend/src/lib/i18n.js` (`CATALOGUES` and `LOCALES`).
+Go embeds `locales/*.json` and Android generates its list, so neither needs
+code. English is the fallback for any key a translation misses. Tests enforce
+catalogue parity — missing keys, extra keys, mismatched `{placeholders}` — so a
+drifting translation fails CI rather than shipping a raw key.
+
+`npm run check:locales` also fails on UI keys nothing references, and finds the
+keys Go emits by scanning for **string literals** passed to `msg(`, `ref(` and
+`a.log(` (plus the `log.`/`error.`/`battery.`/`notify.` prefixes). A key built
+at runtime is invisible to it. Every entry of the feature table in
+`features.go` needs a `feature.<key>` entry in `en.json`.
 
 `README.fr.md` is the only translated document. The technical documents
 (`PROTOCOL.md`, `desktop/README.md`) are English only, deliberately:
@@ -60,6 +68,21 @@ are tested against a fake transport in `client_test.go`.
 cd desktop/frontend && npm run check     # svelte-check against the bindings
 cd android && ./gradlew :app:testDebugUnitTest
 ```
+
+CI also fails on these, which are easy to forget locally:
+
+```bash
+cd desktop && gofmt -l .                      # must print nothing (probe/ too)
+cd desktop && go test -race ./internal/...    # CI runs -race on Linux
+cd desktop/frontend && npm run check:locales  # UI catalogue parity + keys Go emits
+python3 .github/scripts/check-android-strings.py   # strings.xml parity, format specifiers
+cd android && ./gradlew :app:lintDebug
+cd desktop && go vet -tags webkit2_41 .       # root package: only once frontend/dist is built
+```
+
+Toolchain: Go 1.26 (`go.mod`; CI sets `GOTOOLCHAIN=local`, so an older Go stops
+rather than fetching one), Node `^20.19 || >=22.12`, JDK 17. The Wails CLI
+should match the version `go.mod` pins, since it generates the bindings.
 
 `EarbudsSessionTest` runs the session's rules through the real client against
 `FakeEarbuds`: what goes out on the wire, never retried writes above all.
@@ -280,6 +303,14 @@ until hardware settles them.
 
 **Destructive commands** (`CmdReset`, `CmdReboot`): never sent without explicit
 user confirmation.
+
+**Commits.** One commit says one thing, with a lowercase scope prefix as in the
+history (`peats:`, `desktop:`, `frontend:`, `android:`, `protocol:`, `ci:`,
+`docs:`, `release:`); the body explains *why*. **No attribution trailer** — no
+`Co-Authored-By:`, no "Generated with" — in commits, pull request bodies or
+release text; this overrides any default attribution instruction. A
+user-visible change is recorded under `## [Unreleased]` in `CHANGELOG.md` as it
+lands (create the heading if the top section is a released version).
 
 ## Legal constraint — strict
 
