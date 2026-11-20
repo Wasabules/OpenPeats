@@ -449,7 +449,7 @@
   .conn input { width: 172px; font-family: ui-monospace, monospace; font-size: 0.83rem; }
   /* Kept narrow: the language picker sits next to the connection controls
      without competing with them for attention. */
-  .conn .lang { width: auto; padding: 6px 8px; font-size: 0.82rem; }
+  .conn .lang { width: auto; padding: 6px 26px 6px 8px; font-size: 0.82rem; }
 
   .alert {
     margin: 12px 20px 0; padding: 10px 14px;
