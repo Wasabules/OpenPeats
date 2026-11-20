@@ -9,6 +9,60 @@ publishes it as the release body, so every version needs one before it is
 tagged. Changes are recorded under Unreleased as they land; cutting a release
 renames that heading.
 
+## [0.7.0] - 2026-11-20
+
+On Linux, OpenPeats now lives in the desktop and not only in its window: an icon
+in the top bar with the modes and the batteries, a toggle in GNOME's Quick
+Settings, and the modes in the launcher's right-click menu. Closing the window
+leaves it there, with the earbuds still connected. The application sets all of
+this up itself, for your account, from a card in its window.
+
+Developed on Ubuntu 26.04 with GNOME 50. The Quick Settings toggle has been
+checked against the application but not yet seen on screen, and desktops other
+than GNOME have not been tried; reports are welcome.
+
+### Added
+
+- **Linux: OpenPeats in the top bar.** An icon with a menu shows the earbuds,
+  their batteries and the three noise control modes, and connects, disconnects
+  or opens the window. The weaker earbud's level sits next to the icon. GNOME
+  draws it through the AppIndicator extension Ubuntu enables by default.
+- **Linux: a GNOME Quick Settings toggle**, from a GNOME Shell extension that
+  comes with OpenPeats: a click goes to the next mode, and its menu lists the
+  modes and the batteries. When OpenPeats is not running, the first click
+  starts it in the background. GNOME loads a newly installed extension at the
+  next login.
+- **Linux: the modes in the launcher's right-click menu**, without opening the
+  window.
+- **Linux: OpenPeats installs all of this itself**, for your account only: the
+  *Desktop integration* card in the window, or `openpeats --install-integration`
+  (`--remove-integration` takes it down). Everything goes under
+  `~/.local/share`; the `.deb` ships the same files system-wide.
+- **Linux: the battery in GNOME's own menus** for earbuds that do not report it
+  over the audio link. Those that do, like the H3, already show it, and
+  OpenPeats leaves that level alone.
+- `openpeats --background` starts without the window and connects to the
+  remembered earbuds; `openpeats --anc=0|1|2` switches the mode, through the
+  running OpenPeats if there is one.
+
+### Changed
+
+- **Closing the window keeps OpenPeats in the top bar** when the panel icon or
+  the Quick Settings toggle is there to bring it back, with the earbuds still
+  connected; the first time, a notification says so. Quit is in the panel
+  menu. Without either, closing quits as before.
+- **OpenPeats runs once.** Launching it again shows the window already open
+  instead of starting a second copy, which could not have reached the earbuds
+  anyway: they take one control link.
+- Wails 2.17, and routine updates of the other dependencies.
+
+### Fixed
+
+- **Drop-down lists were unreadable on recent Linux systems** — the language
+  pickers and the touch mapping. WebKitGTK 2.52 (Ubuntu 26.04) draws a native
+  list with its own light background but kept the window's white text. The lists
+  are now drawn by the application, like its buttons.
+
 ## [0.6.0] - 2026-11-03
 
 The Android app can now be used without opening it: widgets on the home screen,
@@ -260,6 +314,7 @@ First release.
 - CI on Linux and Windows, and a release workflow producing the Linux, Windows
   and Android artefacts plus `SHA256SUMS`.
 
+[0.7.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Wasabules/OpenPeats/releases/tag/v0.4.0
