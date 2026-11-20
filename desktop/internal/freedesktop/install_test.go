@@ -3,6 +3,7 @@ package freedesktop
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -95,6 +96,10 @@ func TestSystemPieceIsLeftAlone(t *testing.T) {
 }
 
 func TestUserDataDirs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows has no XDG directories, nor Unix paths to put in them.
+		t.Skip("XDG data directories are a freedesktop convention")
+	}
 	t.Setenv("HOME", "/home/someone")
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("XDG_DATA_DIRS", "")
