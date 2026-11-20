@@ -48,6 +48,9 @@ RFCOMM/SPP, sans dépendance à l'interface.
 - Sur Android : sept widgets d'écran d'accueil, une tuile de réglages rapides et
   des raccourcis sur l'icône, avec une connexion gardée en arrière-plan ou ouverte
   à la demande
+- Sous Linux : une icône dans la barre du haut avec les modes et les batteries,
+  un bouton dans les réglages rapides de GNOME, et les modes dans le clic droit
+  du lanceur, la fenêtre se fermant vers la barre du haut
 
 L'application interroge chaque fonction qu'elle sait piloter et grise ce qui ne
 répond pas : elle s'adapte donc aux modèles qui exposent un sous-ensemble

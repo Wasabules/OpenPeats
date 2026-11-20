@@ -155,8 +155,18 @@ func (a *App) write(set peats.Command, payload []byte, settle time.Duration, rea
 	}
 	c.Set(set, readBack[0], payload)
 	time.Sleep(settle)
+	a.readInto(c, readBack...)
+}
 
-	for _, get := range readBack {
+// read reads the given features back from the earbuds into the state.
+func (a *App) read(gets ...peats.Command) {
+	if c := a.conn(); c != nil {
+		a.readInto(c, gets...)
+	}
+}
+
+func (a *App) readInto(c *peats.Client, gets ...peats.Command) {
+	for _, get := range gets {
 		ft := featureByGet(get)
 		f, err := c.Get(get)
 		if err != nil {

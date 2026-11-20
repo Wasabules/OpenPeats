@@ -8,8 +8,26 @@ Icon=openpeats
 Terminal=false
 Categories=AudioVideo;Audio;Settings;
 Keywords=bluetooth;earbuds;headphones;anc;equalizer;soundpeats;
+# A right click on the launcher switches the mode without opening the window.
+# When OpenPeats runs already, the request goes to it over D-Bus.
+Actions=noise-cancelling;transparency;noise-control-off;
 
 # The desktop file itself is not translated through the application
 # catalogues: freedesktop expects the translations inline, keyed by locale.
 GenericName[fr]=Contrôle des écouteurs SoundPEATS
 Comment[fr]=Piloter l'ANC, l'égaliseur, le multipoint et les batteries d'écouteurs SoundPEATS
+
+[Desktop Action noise-cancelling]
+Name=Noise cancelling
+Name[fr]=Réduction de bruit
+Exec=openpeats --anc=1
+
+[Desktop Action transparency]
+Name=Transparency
+Name[fr]=Transparence
+Exec=openpeats --anc=2
+
+[Desktop Action noise-control-off]
+Name=Noise control off
+Name[fr]=Contrôle du bruit coupé
+Exec=openpeats --anc=0

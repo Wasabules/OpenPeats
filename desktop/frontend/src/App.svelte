@@ -7,6 +7,7 @@
   import TouchPanel from "./lib/TouchPanel.svelte";
   import StatusBar from "./lib/StatusBar.svelte";
   import AdvancedPanel from "./lib/AdvancedPanel.svelte";
+  import IntegrationCard from "./lib/IntegrationCard.svelte";
   import { LOCALES, locale, setLocale, t } from "./lib/i18n.js";
 
   import {
@@ -296,6 +297,10 @@
       {/if}
 
       <p class="faint manual">{$t("empty.body")}</p>
+
+      <!-- Linux only: Go reports nothing available elsewhere. It does not
+           need the earbuds, so it is offered before they are connected. -->
+      <div class="integration"><IntegrationCard /></div>
     </div>
 
   {:else if tab === "audio"}
@@ -368,6 +373,8 @@
           </button>
         </div>
       </Card>
+
+      <IntegrationCard />
 
       <Card title={$t("card.voicePrompts.title")} unsupported={sup.voicePack === false}>
         <div class="field">
@@ -489,6 +496,7 @@
   .empty-state p { font-size: 0.89rem; line-height: 1.6; margin: 0; }
   .empty-state .note { margin: 22px 0; color: var(--text-dim); }
   .empty-state .manual { font-size: 0.8rem; }
+  .empty-state .integration { margin-top: 32px; text-align: left; }
 
   .devices {
     list-style: none; margin: 22px 0; padding: 0;

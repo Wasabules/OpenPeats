@@ -7,13 +7,30 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
-// settings is what survives a restart: today, the address of the last earbuds
-// that connected. Nothing is built in — a shipped default would point every
-// user's empty field at one particular pair of earbuds.
+// settings is what survives a restart: the address of the last earbuds that
+// connected, and what the user has already been told. Nothing is built in — a
+// shipped default would point every user's empty field at one particular pair
+// of earbuds.
 type settings struct {
 	MAC string `json:"mac,omitempty"`
+	// BackgroundHintShown records that closing the window once explained
+	// that OpenPeats stays in the panel. Saying it every time would nag.
+	BackgroundHintShown bool `json:"backgroundHintShown,omitempty"`
+}
+
+// settingsMu serialises read-modify-write cycles on the file.
+var settingsMu sync.Mutex
+
+// updateSettings changes some settings and keeps the others.
+func updateSettings(change func(*settings)) error {
+	settingsMu.Lock()
+	defer settingsMu.Unlock()
+	s := loadSettings()
+	change(&s)
+	return saveSettings(s)
 }
 
 // settingsPath is <user config dir>/OpenPeats/settings.json: ~/.config on

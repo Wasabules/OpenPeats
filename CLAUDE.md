@@ -15,7 +15,8 @@ catalogues, with English as the source language and French shipped alongside:
 | Surface | Catalogue |
 |---|---|
 | Desktop UI | `desktop/frontend/src/locales/*.json` |
-| Desktop notifications, `peatsctl` | `desktop/internal/i18n/locales/*.json` |
+| Desktop notifications, panel menu, `peatsctl` | `desktop/internal/i18n/locales/*.json` |
+| GNOME Shell extension | `desktop/gnome-extension/locales/*.json` |
 | Android | `android/app/src/main/res/values*/strings.xml` — the app's language list is generated from these |
 
 Adding a language takes one registration at most: the desktop UI imports its
@@ -55,7 +56,13 @@ cd desktop
 go test ./internal/... -v                          # unit tests, no hardware
 go test ./internal/peats -run TestVectorsEQBand -v  # a single test
 PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/peats -run TestLive -v   # needs the earbuds
+PEATS_MAC=98:80:BB:40:D4:ED go test ./internal/freedesktop -run TestLive -v   # real BlueZ, paired is enough
 ```
+
+`internal/freedesktop` is tested against a `dbus-daemon` each test starts for
+itself, with a fake watcher and a fake BlueZ on it: the bugs there are wrong
+D-Bus signatures and signals on the wrong path, which only a real bus shows.
+The tests skip where `dbus-daemon` is missing (Windows).
 
 The pure protocol layer is pinned down by `testvectors/protocol.json`, which
 the Go tests (`vectors_test.go`) and the Kotlin tests (`VectorsTest.kt`) both
@@ -74,7 +81,7 @@ CI also fails on these, which are easy to forget locally:
 ```bash
 cd desktop && gofmt -l .                      # must print nothing (probe/ too)
 cd desktop && go test -race ./internal/...    # CI runs -race on Linux
-cd desktop/frontend && npm run check:locales  # UI catalogue parity + keys Go emits
+cd desktop/frontend && npm run check:locales  # UI + extension catalogue parity, keys Go emits
 python3 .github/scripts/check-android-strings.py   # strings.xml parity, format specifiers
 cd android && ./gradlew :app:lintDebug
 cd desktop && go vet -tags webkit2_41 .       # root package: only once frontend/dist is built
@@ -135,7 +142,8 @@ i18n.
 
 `ci.yml` runs on every push and pull request: Go vet and tests on Linux and
 Windows (race detector on Linux), catalogue parity including the keys Go
-emits, svelte-check and the frontend build, Android unit tests, debug and
+emits and the GNOME Shell extension's catalogue, a syntax check of the
+extension, svelte-check and the frontend build, Android unit tests, debug and
 release builds. Third-party actions are pinned to commit SHAs; Dependabot
 updates them. Shared Go/Node/WebKit/Wails setup lives in
 `.github/actions/setup-desktop`.
@@ -174,12 +182,18 @@ internal/peats/transport.go    rfcommConn interface, var dialRFCOMM, channel swe
 internal/peats/transport_*.go  one implementation per OS, chosen by build tag
 internal/peats/devices*.go     paired audio devices to pick from, one lister per OS
 internal/i18n/                 catalogue for what Go renders itself
+internal/freedesktop/          D-Bus: control service, panel icon + menu, BlueZ battery — no GTK
+internal/launch/               the command line: --background, --anc=N
 message.go                     Message: the {key, args} pairs Go emits
 app.go                         application state, lifecycle, language
 session.go                     paired devices, connect, disconnect, recovery after a reboot
 features.go                    feature table: refresh, writes, EQ, raw frames
 battery.go                     level polling and low-battery alerts
 settings.go                    what survives a restart (the last address)
+desktop*.go                    the desktop around the window; desktop_linux.go wires freedesktop
+integration*.go                installs that integration for the user (card, --install-integration)
+build/linux/                   launcher entry + D-Bus service file, shipped by the .deb and embedded
+gnome-extension/               Quick Settings toggle (GJS), a view on the control service
 frontend/src/                  Svelte interface
 ```
 
@@ -192,6 +206,53 @@ implementing `rfcommConn` + `isTimeout`; nothing else moves.
 nothing is connected: Windows reads the system's paired list from
 `bthprops.cpl`, Linux asks BlueZ over the system D-Bus. Where no file fills it
 in, the list reports `ErrUnsupported` and the address field remains the way in.
+
+### The Linux desktop around the window
+
+`desktop_linux.go` puts the app into GNOME (and any freedesktop desktop)
+through `internal/freedesktop`, which is plain D-Bus written against the
+specifications: the window belongs to Wails and WebKitGTK, and none of this
+needs GTK. Elsewhere `desktop_other.go` offers nothing and behaviour is
+unchanged.
+
+- **The control service** `io.github.wasabules.OpenPeats` (interface
+  `…OpenPeats1`, session bus) is the one way in from outside the window. The
+  GNOME Shell extension, the launcher's actions (`openpeats --anc=N`) and a
+  second launch all go through it. Owning the name is the single-instance
+  lock: the earbuds take one control link. **Export before claiming** — D-Bus
+  activation delivers the starting call the moment the name is taken.
+- **The panel icon** is a StatusNotifierItem plus `com.canonical.dbusmenu`,
+  drawn by Ubuntu's AppIndicator extension. It re-registers whenever a watcher
+  appears (shell restart, extension switched on).
+- **The battery level goes to BlueZ** as a battery provider, **only for a
+  device with no level yet**. Earbuds that report over HFP (the H3 does) already
+  have one, live; BlueZ keeps one source per device, so competing would replace
+  a live level with one polled every 90 s.
+- **Closing the window hides it only when something shows the app still runs**:
+  the panel icon is drawn, or the extension is active. Otherwise it quits as
+  before. `OnBeforeClose` is the one place this is decided; Wails routes both
+  the close button and `runtime.Quit` through it, hence the `quitting` flag.
+
+Mode changes from outside the window read the mode first (`setMode`): a gesture
+on the earbuds changes it silently, and writing the mode already set replays the
+voice prompt. Picking a mode while disconnected connects first, as the Android
+tile does.
+
+The application installs all this for one user itself (`integration_linux.go`,
+the window's card, `--install-integration`): the files the `.deb` ships, embedded,
+written under `~/.local/share` with `Exec` pointing at the running binary. A
+piece the package installed is reported and left alone.
+
+**GNOME Shell's extension interface is on the bus name `org.gnome.Shell`**, at
+`/org/gnome/Shell`. The name `org.gnome.Shell.Extensions` is the Extensions
+*application*, D-Bus activatable: calling it starts that app and never reaches
+the shell. An extension installed while the shell runs is unknown to it until
+the next login, so enabling it means writing `enabled-extensions` directly.
+
+The extension keeps a copy of the interface XML: a change in
+`freedesktop/service.go` goes there too. GNOME Shell on Wayland only loads a
+newly installed extension after logging in again; `gnome-shell --devkit` needs
+`mutter-devkit`.
 
 ### Layers (Android)
 

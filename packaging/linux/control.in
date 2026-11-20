@@ -4,6 +4,7 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Depends: libc6, libgtk-3-0, libwebkit2gtk-4.1-0
+Suggests: gnome-shell-extension-appindicator
 Conflicts: peatsaudio
 Replaces: peatsaudio
 Maintainer: OpenPeats contributors <39313803+Wasabules@users.noreply.github.com>

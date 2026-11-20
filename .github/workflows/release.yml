@@ -144,8 +144,17 @@ jobs:
           root=$(mktemp -d)
           install -Dm755 "$bin/openpeats" "$root/usr/bin/openpeats"
           install -Dm755 "$bin/peatsctl"   "$root/usr/bin/peatsctl"
-          install -Dm644 packaging/linux/openpeats.desktop \
+          install -Dm644 desktop/build/linux/openpeats.desktop \
               "$root/usr/share/applications/openpeats.desktop"
+          # D-Bus activation, so the GNOME Shell extension can start the
+          # application; then the extension itself, which each user still
+          # switches on (Extensions app, or gnome-extensions enable).
+          install -Dm644 desktop/build/linux/io.github.wasabules.OpenPeats.service \
+              "$root/usr/share/dbus-1/services/io.github.wasabules.OpenPeats.service"
+          ext="$root/usr/share/gnome-shell/extensions/openpeats@wasabules.github.io"
+          install -Dm644 -t "$ext" desktop/gnome-extension/metadata.json \
+              desktop/gnome-extension/extension.js
+          install -Dm644 -t "$ext/locales" desktop/gnome-extension/locales/*.json
           # The vector source: one file for every size, where the 1024 px
           # PNG sat in a directory promising 512.
           install -Dm644 desktop/build/appicon.svg \

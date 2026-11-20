@@ -192,6 +192,53 @@ for (const key of sourceKeys) {
   }
 }
 
+// The GNOME Shell extension renders its own few strings from its own
+// catalogue: a renderer of its own, so a catalogue of its own, held to the same
+// rules — sorted, the keys and placeholders of the English source — and traced
+// to extension.js both ways.
+const extensionDir = resolve(here, "..", "..", "gnome-extension");
+const extensionLocales = join(extensionDir, "locales");
+const readExtension = (locale) => {
+  try {
+    return JSON.parse(readFileSync(join(extensionLocales, `${locale}.json`), "utf8"));
+  } catch (err) {
+    fail(`gnome-extension/locales/${locale}.json: cannot be read — ${err.message}`);
+    return null;
+  }
+};
+const extSource = readExtension(SOURCE);
+const extCode = readFileSync(join(extensionDir, "extension.js"), "utf8");
+if (extSource) {
+  const extKeys = Object.keys(extSource);
+  const holders = (s) => [...new Set([...s.matchAll(PLACEHOLDER)].map((m) => m[1]))].sort().join(",");
+  for (const file of readdirSync(extensionLocales).filter((f) => f.endsWith(".json"))) {
+    const locale = file.slice(0, -".json".length);
+    const catalogue = locale === SOURCE ? extSource : readExtension(locale);
+    if (!catalogue) continue;
+    const keys = Object.keys(catalogue);
+    if (keys.join() !== [...keys].sort().join()) {
+      fail(`gnome-extension/locales/${file}: keys are not sorted`);
+    }
+    for (const key of extKeys) {
+      if (!(key in catalogue)) fail(`gnome-extension/locales/${file}: missing key "${key}"`);
+      else if (holders(catalogue[key]) !== holders(extSource[key])) {
+        fail(`gnome-extension/locales/${file}: "${key}" has other placeholders than English`);
+      }
+    }
+    for (const key of keys) {
+      if (!(key in extSource)) fail(`gnome-extension/locales/${file}: "${key}" is not in English`);
+    }
+  }
+  for (const key of extKeys) {
+    if (!extCode.includes(`'${key}'`)) {
+      fail(`gnome-extension/locales/${SOURCE}.json: "${key}" is not used by extension.js`);
+    }
+  }
+  for (const [, key] of extCode.matchAll(/\bt\('([\w.]+)'/g)) {
+    if (!(key in extSource)) fail(`gnome-extension/extension.js: t('${key}') is not in ${SOURCE}.json`);
+  }
+}
+
 if (problems.length > 0) {
   console.error(`Catalogue check failed (${problems.length} problem(s)):\n`);
   for (const p of problems) console.error(`  ${p}`);

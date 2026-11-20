@@ -115,13 +115,23 @@ func (a *App) notifyLowBattery(labelKey string, pct int) {
 
 	a.log("log.lowBattery", "label", ref(labelKey), "percent", pct)
 	a.emit("alert", map[string]any{"labelKey": labelKey, "percent": pct})
+	a.notify(title, body, true)
+}
 
-	// notify-send ships with every freedesktop desktop. Its absence is not a
-	// blocking error: the alert stays visible inside the application. On
-	// Windows it is simply missing, which is why the in-app banner exists.
+// notify sends a desktop notification. Its text is already rendered: it goes
+// through the Go catalogue, not the frontend's.
+//
+// notify-send ships with every freedesktop desktop. Its absence is not a
+// blocking error: the alert stays visible inside the application. On Windows
+// it is simply missing, which is why the in-app banner exists.
+func (a *App) notify(title, body string, critical bool) {
+	urgency := "--urgency=normal"
+	if critical {
+		urgency = "--urgency=critical"
+	}
 	cmd := exec.Command("notify-send",
 		"--app-name=OpenPeats",
-		"--urgency=critical",
+		urgency,
 		"--icon=audio-headset",
 		title, body)
 	if err := cmd.Run(); err != nil {

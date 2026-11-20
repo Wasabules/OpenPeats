@@ -60,12 +60,17 @@ internal/peats/transport.go    rfcommConn interface, var dialRFCOMM, channel swe
 internal/peats/transport_*.go  one implementation per OS, chosen by build tag
 internal/peats/devices*.go     paired audio devices to pick from, one lister per OS
 internal/i18n/                 catalogue for what Go renders itself
+internal/freedesktop/          D-Bus: control service, panel icon + menu, BlueZ battery
+internal/launch/               the command line: --background, --anc=N
 message.go                     Message: the {key, args} pairs Go emits
 app.go                         application state, lifecycle, language
 session.go                     paired devices, connect, disconnect, recovery after a reboot
 features.go                    feature table: refresh, writes, EQ, raw frames
 battery.go                     level polling and low-battery alerts
 settings.go                    what survives a restart (the last address)
+desktop*.go                    the desktop around the window (Linux: desktop_linux.go)
+integration*.go                installing that desktop integration for the user
+gnome-extension/               Quick Settings toggle for GNOME Shell
 frontend/src/                  Svelte interface
 frontend/src/locales/          UI catalogues (source of truth: en.json)
 ```
@@ -80,15 +85,71 @@ nothing is connected: Windows reads the system's paired list from
 `bthprops.cpl`, Linux asks BlueZ over the system D-Bus. Where no file fills it
 in, the list reports `ErrUnsupported` and the address field remains the way in.
 
+## Linux desktop integration
+
+Around the window, on Linux:
+
+- **An icon in the top bar** with a menu: the batteries, the three noise
+  control modes, connect or disconnect, open the window, quit. The lowest
+  earbud's level sits next to the icon. GNOME draws it through the AppIndicator
+  extension Ubuntu enables by default; KDE draws it natively.
+- **A toggle in GNOME's Quick Settings**, from the extension in
+  `gnome-extension/`: a click goes to the next mode, as the Android tile does,
+  and its menu lists the modes and the batteries. When OpenPeats is not
+  running, the first click starts it in the background through D-Bus
+  activation.
+- **The launcher's actions**: a right click on the OpenPeats icon in the dock
+  switches the mode without opening the window.
+- **The battery in GNOME's own menus**, through BlueZ, for earbuds that do not
+  report it themselves. Most do, over the HFP audio link — the H3 does — and
+  GNOME shows that already; OpenPeats then leaves it alone.
+
+Closing the window keeps OpenPeats running in the panel, with the link up, when
+the panel icon or the extension is there to bring it back; the first time, a
+notification says so. Otherwise closing quits, as before. Quit is in the
+panel menu.
+
+All of these talk to one D-Bus service on the session bus,
+`io.github.wasabules.OpenPeats`, which also keeps OpenPeats to a single
+instance: launching it again shows the window of the one running.
+
+```bash
+gdbus introspect --session --dest io.github.wasabules.OpenPeats \
+    --object-path /io/github/wasabules/OpenPeats
+openpeats --anc=2          # transparency, through the running instance if any
+openpeats --background     # no window; connects to the remembered earbuds
+```
+
+The `.deb` installs all of it system-wide. Otherwise the application installs
+it for the current user: the **Desktop integration** card in the window (Linux
+only), or the command line —
+
+```bash
+openpeats --install-integration   # install, update, and switch the extension on
+openpeats --remove-integration    # take down what the line above put in place
+```
+
+Both write under `~/.local/share` only — the launcher entry with its actions,
+its icon, the D-Bus activation file and the extension — pointing at the binary
+that runs them, so a build run from its own directory integrates like a
+package. Running it again after a rebuild elsewhere updates the files. What the
+`.deb` installed is left alone. On Wayland, GNOME loads a newly installed
+extension at the next login; the card says so.
+
+The files themselves are the ones the `.deb` ships, embedded in the binary:
+`build/linux/` for the launcher entry and the D-Bus service file,
+`gnome-extension/` for the extension.
+
 ## Localisation
 
-Two catalogues, split by **who renders the text**, so no string is ever
+Three catalogues, split by **who renders the text**, so no string is ever
 translated twice in places that could drift apart:
 
 | Catalogue | Covers | Rendered by |
 |---|---|---|
 | `frontend/src/locales/*.json` | Everything in the window, including log lines and connection errors | The frontend |
-| `internal/i18n/locales/*.json` | Desktop notifications, `peatsctl` output | Go |
+| `internal/i18n/locales/*.json` | Desktop notifications, the panel icon's menu, `peatsctl` output | Go |
+| `gnome-extension/locales/*.json` | The Quick Settings toggle | The extension, in the shell's language |
 
 Go **never sends text to the frontend**. It sends `Message{Key, Args}` values
 (see `message.go`); the frontend renders them at display time. Two consequences

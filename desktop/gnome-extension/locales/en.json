@@ -1,0 +1,17 @@
+{
+  "battery.case": "Case {percent}",
+  "battery.left": "Left {percent}",
+  "battery.right": "Right {percent}",
+  "connect": "Connect",
+  "connecting": "Connecting…",
+  "disconnect": "Disconnect",
+  "disconnected": "Not connected",
+  "menuButton": "Open the earbuds menu",
+  "mode.anc": "Noise cancelling",
+  "mode.off": "Noise control off",
+  "mode.transparency": "Transparency",
+  "noEarbuds": "No earbuds chosen yet",
+  "open": "Open OpenPeats",
+  "percent": "{value}%",
+  "title": "Earbuds"
+}

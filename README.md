@@ -42,6 +42,9 @@ transport, with no dependency on the interface.
 - Raw frame console for exploration
 - On Android: seven home screen widgets, a quick settings tile and app icon
   shortcuts, with a connection kept up in the background or opened on demand
+- On Linux: an icon in the top bar with the modes and batteries, a GNOME Quick
+  Settings toggle, and the modes in the launcher's right-click menu, with the
+  window closing to the panel
 
 The application queries every feature it has a control for and dims what does
 not answer, so it adapts to models exposing a different subset.

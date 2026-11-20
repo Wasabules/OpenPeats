@@ -142,6 +142,15 @@ jobs:
           npm ci
           npm run check:locales
 
+      # The extension runs inside gnome-shell, which CI cannot start: this
+      # catches what would make a user's shell refuse to load it at all.
+      # check:locales above already covers its catalogue.
+      - name: GNOME Shell extension
+        working-directory: desktop/gnome-extension
+        run: |
+          node --check extension.js
+          node -e 'JSON.parse(require("fs").readFileSync("metadata.json", "utf8"))'
+
       - name: Android string resources
         run: python3 .github/scripts/check-android-strings.py
 

@@ -1,0 +1,7 @@
+{
+  "uuid": "openpeats@wasabules.github.io",
+  "name": "OpenPeats",
+  "description": "SoundPEATS earbuds in Quick Settings: noise control and battery levels, through the OpenPeats application.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/Wasabules/OpenPeats"
+}

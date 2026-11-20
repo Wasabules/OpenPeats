@@ -32,7 +32,16 @@ func (a *App) Connect(mac string) Message {
 	if _, err := peats.ParseMAC(mac); err != nil {
 		return msg("error.invalidAddress")
 	}
+	if err := a.connect(mac); err != nil {
+		return describeConnectError(err)
+	}
+	return Message{}
+}
 
+// connect opens the link to a valid address and refreshes the state. The
+// panel and the quick settings go through here too, and render the error
+// their own way.
+func (a *App) connect(mac string) error {
 	a.sessionMu.Lock()
 
 	// Whatever was running stands down: the current client, and any
@@ -59,15 +68,15 @@ func (a *App) Connect(mac string) Message {
 	if err != nil {
 		a.log("log.connectFailed")
 		a.pushState()
-		return describeConnectError(err)
+		return err
 	}
 
-	if err := saveSettings(settings{MAC: mac}); err != nil {
+	if err := updateSettings(func(s *settings) { s.MAC = mac }); err != nil {
 		log.Printf("settings: address not remembered: %v", err)
 	}
 	a.log("log.connected", "channel", cl.Channel())
 	a.Refresh()
-	return Message{}
+	return nil
 }
 
 // Devices answers PairedDevices: the list, or why there is none.

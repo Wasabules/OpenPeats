@@ -1,0 +1,6 @@
+# D-Bus activation: the GNOME Shell extension's first call starts OpenPeats in
+# the background when it is not running. Installed to
+# /usr/share/dbus-1/services/.
+[D-BUS Service]
+Name=io.github.wasabules.OpenPeats
+Exec=/usr/bin/openpeats --background

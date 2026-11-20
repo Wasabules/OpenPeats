@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -20,6 +21,7 @@ import (
 //	features.go  the feature table, refresh, writes, EQ, raw frames
 //	battery.go   level polling and low-battery alerts
 //	settings.go  what survives a restart
+//	desktop*.go  the desktop around the window: panel, quick settings, BlueZ
 
 // State is the full device state, pushed to the frontend.
 type State struct {
@@ -94,6 +96,16 @@ type App struct {
 	sessionMu sync.Mutex
 
 	monitorStop chan struct{}
+
+	// desktop is what the system offers around the window — on Linux the
+	// panel icon, the control service and the BlueZ battery level. It
+	// follows every state change.
+	desktop desktopShell
+
+	// quitting tells a real quit apart from the window's close button,
+	// which only hides the window when something in the panel can bring it
+	// back.
+	quitting atomic.Bool
 }
 
 func NewApp() *App {
@@ -106,12 +118,48 @@ func NewApp() *App {
 			Language:      i18n.Locale(),
 		},
 		notified: map[string]bool{},
+		desktop:  noDesktop{},
 	}
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	a.desktop.start()
+}
+
+// beforeClose decides what closing the window means. With something in the
+// panel to bring it back, the window hides and the link stays up: reaching the
+// earbuds from the panel is the point of having it there. Without, closing
+// quits, as it always has — an application running with nothing on screen to
+// show for it would just look like a leak.
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if a.quitting.Load() || !a.desktop.hasIndicator() {
+		return false
+	}
+	runtime.WindowHide(ctx)
+	a.desktop.closedToBackground()
+	return true
+}
+
+// quit leaves for good, whatever the panel offers.
+func (a *App) quit() {
+	a.quitting.Store(true)
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
+}
+
+// showWindow brings the window back, from the panel or a second launch.
+func (a *App) showWindow() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.WindowShow(a.ctx)
+	runtime.WindowUnminimise(a.ctx) // raises it, where the compositor lets it
+}
 
 func (a *App) shutdown(context.Context) {
+	a.desktop.close()
 	a.stopMonitor()
 	a.mu.Lock()
 	cl := a.client
@@ -149,6 +197,7 @@ func (a *App) pushState() {
 	s := a.state
 	a.mu.RUnlock()
 	a.emit("state", s)
+	a.desktop.stateChanged()
 }
 
 // GetState returns the current state (initial frontend call).

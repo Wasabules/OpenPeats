@@ -1,0 +1,17 @@
+{
+  "battery.case": "Boîtier {percent}",
+  "battery.left": "Gauche {percent}",
+  "battery.right": "Droit {percent}",
+  "connect": "Connecter",
+  "connecting": "Connexion…",
+  "disconnect": "Déconnecter",
+  "disconnected": "Non connectés",
+  "menuButton": "Ouvrir le menu des écouteurs",
+  "mode.anc": "Réduction de bruit",
+  "mode.off": "Contrôle du bruit coupé",
+  "mode.transparency": "Transparence",
+  "noEarbuds": "Aucun écouteur choisi",
+  "open": "Ouvrir OpenPeats",
+  "percent": "{value} %",
+  "title": "Écouteurs"
+}
